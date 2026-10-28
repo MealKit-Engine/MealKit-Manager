@@ -1,5 +1,5 @@
 // MealKit Manager 실행 파일: SDL3 창 + SDL_Renderer + Dear ImGui (MealKit Audio 도구와 같은 틀). 실제 화면은 App.
-//   MealKitManager [--engine <엔진 폴더>] [--lang ko|en] [--frames N --capture <png>]
+//   MealKitManager [--engine <엔진 폴더>] [--lang ko|en] [--modules <프로젝트 폴더>] [--frames N --capture <png>]   (--modules: [모듈] 탭으로 시작)
 //   MealKitManager --list      창 없이 프로젝트·엔진·도구 목록을 출력 (시험·스크립트용)
 //   MealKitManager [--engine <엔진>] --new <이름> --path <위치>   창 없이 새 프로젝트 (화면 [새 프로젝트]와 같은 스크립트)
 //   MealKitManager --open <프로젝트 폴더>                         창 없이 그 프로젝트의 엔진 에디터로 연다
@@ -115,7 +115,7 @@ int openProject(const mkmanager::Catalog& catalog, const std::string& directory)
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string engine, capture, language, newName, newPath, open;
+    std::string engine, capture, language, newName, newPath, open, modules;
     long frames = 0; // --frames N: N프레임 뒤 끝낸다 (--capture로 마지막 화면을 PNG로, 문서·시험용)
     bool list = false;
     for (int i = 1; i < argc; ++i) {
@@ -126,6 +126,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) frames = std::strtol(argv[++i], nullptr, 10);
         else if (std::strcmp(argv[i], "--capture") == 0 && i + 1 < argc) capture = argv[++i];
         else if (std::strcmp(argv[i], "--lang") == 0 && i + 1 < argc) language = argv[++i];
+        else if (std::strcmp(argv[i], "--modules") == 0 && i + 1 < argc) modules = argv[++i];
         else if (std::strcmp(argv[i], "--list") == 0) list = true;
         else if (std::strcmp(argv[i], "--version") == 0) {
             std::printf("MealKit Manager %s\n", MKMANAGER_VERSION);
@@ -179,6 +180,7 @@ int main(int argc, char** argv) {
     app.window = window;
     app.init(engine);
     if (!language.empty()) mkmanager::setLanguage(language);
+    if (!modules.empty()) app.showModulesTab(modules);
 
     long frame = 0;
     for (bool running = true; running;) {

@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 
 namespace mkmanager {
 namespace {
@@ -27,6 +28,11 @@ bool validGameName(const char* name) {
     for (const char* c = name; *c; ++c)
         if (!std::isalnum(static_cast<unsigned char>(*c)) && *c != '_') return false;
     return true;
+}
+
+bool fileExists(const std::string& path) {
+    std::error_code ec;
+    return std::filesystem::is_regular_file(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
 }
 
 std::string pathJoin(const std::string& a, const std::string& b) {
@@ -73,18 +79,35 @@ void App::reload() { m_catalog.load(m_extraEngine); }
 void App::frame() {
     takePickedFolder();
     if (m_job.takeFinished()) {
-        const bool ok = m_job.exitCode() == 0;
-        m_status = ok ? trf("%s: done", m_job.label().c_str()) : trf("%s: failed (exit code %d)", m_job.label().c_str(), m_job.exitCode());
-        m_statusError = !ok;
-        m_jobOutput = ok ? std::string() : m_job.output();
-        if (ok && !m_jobAdd.empty()) {
-            m_catalog.addRecent(m_jobAdd);
-            m_selected = normalizeDirectory(m_jobAdd);
+        if (m_jobListsModules) { // 모듈 목록: 상태 줄은 그대로 두고 [모듈] 탭에 보인다
+            m_jobListsModules = false;
+            m_modules = parseModuleList(m_job.output());
+            if (m_job.exitCode() != 0) m_modules.error = m_job.output();
+        } else {
+            finishJob();
         }
-        m_jobAdd.clear();
-        reload();
     }
+    drawWindow();
+}
 
+void App::finishJob() {
+    if (m_jobChangesModules) {
+        m_jobChangesModules = false;
+        m_modulesFor.clear(); // 성공했든 아니든 지금 상태를 다시 받는다
+    }
+    const bool ok = m_job.exitCode() == 0;
+    m_status = ok ? trf("%s: done", m_job.label().c_str()) : trf("%s: failed (exit code %d)", m_job.label().c_str(), m_job.exitCode());
+    m_statusError = !ok;
+    m_jobOutput = ok ? std::string() : m_job.output();
+    if (ok && !m_jobAdd.empty()) {
+        m_catalog.addRecent(m_jobAdd);
+        m_selected = normalizeDirectory(m_jobAdd);
+    }
+    m_jobAdd.clear();
+    reload();
+}
+
+void App::drawWindow() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -98,6 +121,11 @@ void App::frame() {
             projectsTab();
             ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem(tr("Modules"), nullptr, m_openModulesTab ? ImGuiTabItemFlags_SetSelected : 0)) {
+            modulesTab();
+            ImGui::EndTabItem();
+        }
+        m_openModulesTab = false;
         if (ImGui::BeginTabItem(tr("Engines"))) {
             enginesTab();
             ImGui::EndTabItem();
@@ -230,6 +258,145 @@ void App::enginesTab() {
             ImGui::PopID();
         }
         ImGui::EndTable();
+    }
+}
+
+void App::runModuleTool(const Engine& engine, const Project& project, const std::string& label, std::vector<std::string> args,
+                        bool listing) {
+    args.insert(args.end(), {"-Project", project.directory});
+    if (!m_job.start(label, powershellArgs(pathJoin(engine.directory, "tools\\module.ps1"), args))) return;
+    m_jobListsModules = listing;
+    m_jobChangesModules = !listing;
+    if (!listing) {
+        m_status.clear();
+        m_jobOutput.clear();
+    }
+}
+
+// 고른 프로젝트의 소스 모듈. 규칙은 그 프로젝트 엔진의 tools\module.ps1 한 곳 (search -Tsv로 목록, add·update·remove로 바꾼다)
+void App::modulesTab() {
+    const Project* project = nullptr;
+    for (const Project& p : m_catalog.projects())
+        if (p.valid && sameDirectory(p.directory, m_selected)) project = &p;
+    if (!project) {
+        ImGui::TextDisabled("%s", tr("Pick a project on the Projects tab."));
+        return;
+    }
+    const Engine* engine = m_catalog.engineFor(*project);
+    if (!engine || !fileExists(pathJoin(engine->directory, "tools\\module.ps1"))) {
+        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("This project's engine has no module tool (tools\\module.ps1, engine 0.5 or later)."));
+        return;
+    }
+    const bool busy = m_job.running();
+    if (!busy && !sameDirectory(m_modulesFor, project->directory)) {
+        m_modulesFor = project->directory;
+        m_modules = {};
+        runModuleTool(*engine, *project, tr("Module list"), {"search", "-Tsv"}, true);
+    }
+
+    ImGui::Text(tr("Project: %s"), project->name.c_str());
+    ImGui::SameLine();
+    ImGui::BeginDisabled(busy);
+    if (ImGui::Button(tr("Refresh"))) m_modulesFor.clear();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##modsearch", tr("Search"), m_moduleSearch, sizeof(m_moduleSearch));
+
+    const ImVec4 warn(1.0f, 0.8f, 0.3f, 1.0f);
+    const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp;
+    ImGui::SeparatorText(tr("In this project"));
+    if (m_modules.installed.empty()) ImGui::TextDisabled("%s", busy ? tr("Reading...") : tr("No modules."));
+    else if (ImGui::BeginTable("##installed", 4, flags)) {
+        ImGui::TableSetupColumn(tr("Module"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn(tr("Version"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn(tr("Changes"), ImGuiTableColumnFlags_WidthStretch, 1.5f);
+        ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Update  Remove  ").x * 1.6f);
+        ImGui::TableHeadersRow();
+        for (const InstalledModule& m : m_modules.installed) {
+            ImGui::PushID(m.name.c_str());
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(m.name.c_str());
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", m.source.c_str());
+            ImGui::TableNextColumn();
+            const RegistryModule* reg = nullptr;
+            for (const RegistryModule& r : m_modules.registry)
+                if (r.name == m.name) reg = &r;
+            if (reg && m.source.rfind("registry ", 0) == 0 && !reg->version.empty() && reg->version != m.version)
+                ImGui::TextColored(warn, "%s -> %s", m.version.c_str(), reg->version.c_str());
+            else ImGui::TextUnformatted(m.version.c_str());
+            ImGui::TableNextColumn();
+            if (m.pending > 0) ImGui::TextColored(warn, "%s", trf("%d .new file(s) to merge", m.pending).c_str());
+            else if (m.modified > 0) ImGui::TextUnformatted(trf("%d file(s) changed here", m.modified).c_str());
+            else ImGui::TextDisabled("-");
+            ImGui::TableNextColumn();
+            ImGui::BeginDisabled(busy);
+            if (ImGui::SmallButton(tr("Update")))
+                runModuleTool(*engine, *project, trf("Update %s", m.name.c_str()), {"update", m.name}, false);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", tr("Files you changed are kept; the new version is written next to them as .new"));
+            ImGui::SameLine();
+            if (ImGui::SmallButton(tr("Remove"))) m_confirmRemove = m.name;
+            ImGui::EndDisabled();
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::SeparatorText(tr("Registry (MealKit-Modules)"));
+    if (!m_modules.error.empty()) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", m_modules.error.c_str());
+    if (ImGui::BeginTable("##registry", 3, flags | ImGuiTableFlags_ScrollY)) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn(tr("Module"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn(tr("Description"), ImGuiTableColumnFlags_WidthStretch, 3.0f);
+        ImGui::TableSetupColumn("##add", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Added  ").x * 1.5f);
+        ImGui::TableHeadersRow();
+        for (const RegistryModule& r : m_modules.registry) {
+            if (!containsNoCase(r.name + " " + r.title + " " + r.summary + " " + r.tags + " " + r.author, m_moduleSearch)) continue;
+            ImGui::PushID(r.name.c_str());
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(r.name.c_str());
+            if (r.version.empty()) ImGui::TextColored(warn, "%s", trf("%s (engine %s)", r.latest.c_str(), r.latestEngine.c_str()).c_str());
+            else ImGui::TextDisabled("%s", r.version.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(r.title.c_str());
+            ImGui::TextWrapped("%s", r.summary.c_str());
+            ImGui::TextDisabled("%s  %s", trf("by %s", r.author.c_str()).c_str(), r.tags.c_str());
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", r.repo.c_str());
+            ImGui::TableNextColumn();
+            bool installed = false;
+            for (const InstalledModule& m : m_modules.installed) installed |= m.name == r.name;
+            if (installed) ImGui::TextDisabled("%s", tr("Added"));
+            else {
+                ImGui::BeginDisabled(busy);
+                if (ImGui::SmallButton(tr("Add")))
+                    runModuleTool(*engine, *project, trf("Add %s", r.name.c_str()), {"add", r.name}, false);
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    ImGui::SetTooltip("%s", tr("Module code runs inside the editor and the game. The registry checks that it builds, not what it does - read what you add."));
+                ImGui::EndDisabled();
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    if (!m_confirmRemove.empty()) ImGui::OpenPopup("##remove");
+    if (ImGui::BeginPopupModal("##remove", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        ImGui::TextUnformatted(trf("Remove modules/%s from the project?", m_confirmRemove.c_str()).c_str());
+        ImGui::TextDisabled("%s", tr("It is refused while game code includes it. Undo with version control."));
+        if (ImGui::Button(tr("Remove"))) {
+            runModuleTool(*engine, *project, trf("Remove %s", m_confirmRemove.c_str()), {"remove", m_confirmRemove}, false);
+            m_confirmRemove.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Cancel"))) {
+            m_confirmRemove.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 }
 

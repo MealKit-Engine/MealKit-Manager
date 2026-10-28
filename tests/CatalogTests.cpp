@@ -146,6 +146,23 @@ void testTranslations() {
     CHECK(count > 20);
 }
 
+// 엔진 tools\module.ps1 search -Tsv의 줄 (모르는 줄은 건너뛴다)
+void testModuleList() {
+    const ModuleList list = parseModuleList(
+        "installed\tcooldown\t0.1.0\t2\t1\tregistry cooldown 0.1.0 abc https://x/module-cooldown v0.1.0\r\n"
+        "some other line\n"
+        "module\tcooldown\t0.2.0\t0.3.0\t0.6\tCooldowns\tTick timers\tgameplay ui\tKingProtea99\thttps://x/module-cooldown\n"
+        "module\thealth\t-\t1.0.0\t0.9\tHealth\tHit points\tgameplay\tSomeone\thttps://x/module-health\n"
+        "error\toffline\n");
+    CHECK(list.installed.size() == 1);
+    CHECK(list.installed[0].name == "cooldown" && list.installed[0].modified == 2 && list.installed[0].pending == 1);
+    CHECK(list.installed[0].source.rfind("registry ", 0) == 0);
+    CHECK(list.registry.size() == 2);
+    CHECK(list.registry[0].version == "0.2.0" && list.registry[0].latest == "0.3.0" && list.registry[0].tags == "gameplay ui");
+    CHECK(list.registry[1].version.empty() && list.registry[1].latestEngine == "0.9" && list.registry[1].repo == "https://x/module-health");
+    CHECK(list.error == "offline");
+}
+
 } // namespace
 
 int main() {
@@ -155,6 +172,7 @@ int main() {
     testCatalog(root);
     testKeys(root);
     testTranslations();
+    testModuleList();
     fs::remove_all(root, ec);
     std::printf(g_failures ? "FAILED (%d)\n" : "PASS\n", g_failures);
     return g_failures ? 1 : 0;

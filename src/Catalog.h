@@ -40,6 +40,30 @@ struct Tool {
     std::string opens;  // 이 도구로 여는 파일 확장자 (공백으로 나눔)
 };
 
+// 소스 모듈 (엔진 docs/MODULES.md). 엔진의 tools\module.ps1 search -Tsv -Project <폴더> 출력에서 읽는다
+// (엔진 에디터 editor/ModulesPanel.cpp의 parseModuleList와 같은 약속: 줄 모양을 바꾸면 세 곳을 같이 고친다)
+struct InstalledModule {
+    std::string name, version, source;
+    int modified = 0; // 설치한 뒤 게임이 고친 파일 수
+    int pending = 0;  // 갱신이 남긴 .new 파일 수
+};
+
+struct RegistryModule {
+    std::string name;
+    std::string version;      // 프로젝트 엔진 MINOR용 가장 새 버전 (없으면 빈 칸)
+    std::string latest;       // 가장 새 버전
+    std::string latestEngine; // 그 버전의 엔진 MAJOR.MINOR
+    std::string title, summary, tags, author, repo;
+};
+
+struct ModuleList {
+    std::vector<InstalledModule> installed;
+    std::vector<RegistryModule> registry;
+    std::string error; // 레지스트리 목록을 받지 못한 이유
+};
+
+ModuleList parseModuleList(const std::string& output);
+
 constexpr int kLiveProtocol = 1; // 이 Manager가 아는 라이브 연결 약속 버전
 
 std::string userDirectory();
