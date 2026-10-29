@@ -32,7 +32,7 @@ bool Job::start(const std::string& label, std::vector<std::string> args) {
         SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER, const_cast<char**>(list.data()));
         SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER, SDL_PROCESS_STDIO_APP);
         SDL_SetBooleanProperty(props, SDL_PROP_PROCESS_CREATE_STDERR_TO_STDOUT_BOOLEAN, true);
-        SDL_SetBooleanProperty(props, SDL_PROP_PROCESS_CREATE_BACKGROUND_BOOLEAN, true); // 콘솔 창 없이
+        SDL_SetBooleanProperty(props, SDL_PROP_PROCESS_CREATE_BACKGROUND_BOOLEAN, true); // without a console window
         SDL_Process* process = SDL_CreateProcessWithProperties(props);
         SDL_DestroyProperties(props);
         if (!process) {
@@ -41,7 +41,7 @@ bool Job::start(const std::string& label, std::vector<std::string> args) {
         } else {
             size_t size = 0;
             int code = 0;
-            // 끝날 때까지 출력을 계속 읽는다
+            // Keeps reading output until it ends
             if (char* text = static_cast<char*>(SDL_ReadProcess(process, &size, &code))) {
                 m_output.assign(text, size);
                 SDL_free(text);
@@ -69,7 +69,7 @@ bool launchDetached(const std::vector<std::string>& args, std::string& error) {
         error = SDL_GetError();
         return false;
     }
-    SDL_DestroyProcess(process); // 프로세스는 계속 돈다
+    SDL_DestroyProcess(process); // the process keeps running
     return true;
 }
 

@@ -1,5 +1,5 @@
-// MealKit Manager 시험 (창 없이): 가짜 사용자 폴더·엔진·프로젝트·도구를 만들고 Catalog가 읽는 것을 본다.
-//   mkmanager_tests   끝에 PASS 또는 FAILED
+// MealKit Manager tests (without a window): creates a fake user folder/engine/projects/tools and checks what Catalog reads.
+//   mkmanager_tests   PASS or FAILED at the end
 #include "Catalog.h"
 #include "Strings.h"
 
@@ -43,7 +43,7 @@ void setUserDirectory(const fs::path& dir) {
 
 void testCatalog(const fs::path& root) {
     const fs::path user = root / "user", engine = root / "engine", game = root / "games" / "Game", old = root / "games" / "Old";
-    // 엔진: VERSION + new_project.ps1 + 빌드한 에디터. 엔진 저장소 자신도 프로젝트다 (engine 줄 없음)
+    // Engine: VERSION + new_project.ps1 + a built editor. The engine repo itself is a project too (no engine line)
     write(engine / "VERSION", "0.5.2\n");
     write(engine / "tools" / "new_project.ps1", "#\n");
     write(engine / "build" / "Editor" / "bin" / "MealKitEditor.exe", "");
@@ -56,7 +56,7 @@ void testCatalog(const fs::path& root) {
     write(user / "editor_settings.txt", "language en\ntoolPath " + str(root / "devtool") + "\n");
     write(user / "tools" / "audio" / "mealkit-tool.txt", "# MealKit tool manifest\n@format tool 1\nname MealKit Audio\nexe MealKitAudio.exe\nversion 0.2.0\nprotocol 1\nopens .events .wav\n");
     write(root / "devtool" / "mealkit-tool.txt", "@format tool 1\nname Future Tool\nexe future.exe\nprotocol 9\n");
-    write(user / "tools" / "broken" / "mealkit-tool.txt", "@format tool 1\nversion 1\n"); // 이름·exe 없음 → 빠진다
+    write(user / "tools" / "broken" / "mealkit-tool.txt", "@format tool 1\nversion 1\n"); // no name/exe → dropped
     setUserDirectory(user);
 
     Catalog catalog;
@@ -64,18 +64,18 @@ void testCatalog(const fs::path& root) {
     CHECK(catalog.language() == "en");
     CHECK(catalog.projects().size() == 4);
     if (catalog.projects().size() == 4) {
-        const Project& first = catalog.projects()[0]; // 즐겨찾기가 먼저
+        const Project& first = catalog.projects()[0]; // favorites first
         CHECK(first.name == "Old" && first.favorite);
         CHECK(catalog.needsUpgrade(first));
         const Project& sample = catalog.projects()[1];
         CHECK(sample.name == "sandbox" && sample.engine.empty());
         CHECK(catalog.engineFor(sample) && !catalog.needsUpgrade(sample));
         const Project& g = catalog.projects()[2];
-        CHECK(g.name == "Game" && g.engineVersion == "0.5.2" && g.created == "2026-10-01"); // BOM이 있어도 읽는다
+        CHECK(g.name == "Game" && g.engineVersion == "0.5.2" && g.created == "2026-10-01"); // read even with a BOM
         CHECK(catalog.engineFor(g) && !catalog.needsUpgrade(g));
         CHECK(!catalog.projects()[3].valid);
     }
-    CHECK(catalog.engines().size() == 1); // 같은 엔진을 여러 프로젝트가 가리켜도 하나
+    CHECK(catalog.engines().size() == 1); // one engine even when several projects point to it
     if (!catalog.engines().empty()) {
         CHECK(catalog.engines()[0].version == "0.5.2");
         CHECK(!catalog.engines()[0].editorExe.empty());
@@ -87,26 +87,26 @@ void testCatalog(const fs::path& root) {
         CHECK(fs::path(catalog.tools()[1].exe).filename() == "MealKitAudio.exe");
     }
 
-    // 목록 고치기: 에디터와 같은 파일을 쓴다
+    // Editing the list: uses the same files as the editor
     catalog.addRecent(str(game));
     catalog.removeRecent(str(old));
     catalog.setFavorite(str(game), true);
     catalog.load();
     CHECK(catalog.projects().size() == 3);
     if (!catalog.projects().empty()) CHECK(catalog.projects()[0].name == "Game" && catalog.projects()[0].favorite);
-    CHECK(readList(str(user / "favorite_projects.txt")).size() == 1); // Old는 즐겨찾기에서도 빠졌다
+    CHECK(readList(str(user / "favorite_projects.txt")).size() == 1); // Old was removed from favorites too
 
-    // 다른 엔진 더하기 (engines.txt), 엔진이 아닌 폴더는 목록에 나오지 않는다
+    // Adding another engine (engines.txt); folders that aren't engines don't appear in the list
     const fs::path engine2 = root / "engine2";
     write(engine2 / "VERSION", "0.6.0\n");
     write(engine2 / "tools" / "new_project.ps1", "#\n");
     catalog.addEngine(str(engine2));
     catalog.addEngine(str(root / "games"));
-    catalog.addEngine(str(engine2)); // 두 번 더해도 한 줄
+    catalog.addEngine(str(engine2)); // adding twice gives one line
     catalog.load();
     CHECK(catalog.engines().size() == 2);
     CHECK(readList(str(user / "engines.txt")).size() == 2);
-    if (catalog.engines().size() == 2) { // engines.txt가 프로젝트가 가리키는 엔진보다 먼저
+    if (catalog.engines().size() == 2) { // engines.txt comes before engines that projects point to
         CHECK(catalog.engines()[0].version == "0.6.0" && catalog.engines()[0].editorExe.empty());
         CHECK(catalog.engines()[1].version == "0.5.2");
     }
@@ -120,7 +120,7 @@ void testKeys(const fs::path& root) {
     CHECK(sameDirectory(str(root / "a" / ".." / "keys.txt"), str(root / "keys.txt")));
 }
 
-// App.cpp의 tr("...")/trf("...") 글자가 모두 한국어 표에 있는가
+// Whether all tr("...")/trf("...") text in App.cpp is in the Korean table
 void testTranslations() {
     std::ifstream in(fs::path(MKMANAGER_SOURCE_DIR) / "src" / "App.cpp", std::ios::binary);
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -146,7 +146,7 @@ void testTranslations() {
     CHECK(count > 20);
 }
 
-// 엔진 tools\module.ps1 search -Tsv의 줄 (모르는 줄은 건너뛴다)
+// Lines of the engine's tools\module.ps1 search -Tsv (unknown lines are skipped)
 void testModuleList() {
     const ModuleList list = parseModuleList(
         "installed\tcooldown\t0.1.0\t2\t1\tregistry cooldown 0.1.0 abc https://x/module-cooldown v0.1.0\r\n"

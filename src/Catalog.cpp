@@ -11,7 +11,7 @@ namespace mkmanager {
 namespace {
 namespace fs = std::filesystem;
 
-constexpr size_t kMaxRecent = 100; // 에디터(editor/Project.cpp)와 같다
+constexpr size_t kMaxRecent = 100; // same as the editor (editor/Project.cpp)
 
 fs::path fromUtf8(const std::string& s) { return fs::path(std::u8string(s.begin(), s.end())); }
 
@@ -76,7 +76,7 @@ std::vector<std::string> readList(const std::string& path) {
     std::ifstream in(fromUtf8(path), std::ios::binary);
     std::string line;
     while (std::getline(in, line)) {
-        if (list.empty() && line.rfind("\xEF\xBB\xBF", 0) == 0) line.erase(0, 3); // 메모장·PowerShell이 붙인 BOM
+        if (list.empty() && line.rfind("\xEF\xBB\xBF", 0) == 0) line.erase(0, 3); // BOM added by Notepad/PowerShell
         line = trim(line);
         if (!line.empty()) list.push_back(line);
     }
@@ -172,11 +172,11 @@ void Catalog::load(const std::string& extraEngine) {
         p.favorite = containsDirectory(favorites, p.directory);
         m_projects.push_back(std::move(p));
     }
-    // 즐겨찾기 먼저, 그 안에서는 최근 순(목록 순서) 그대로
+    // Favorites first, and within them by recency (list order) as is
     std::stable_sort(m_projects.begin(), m_projects.end(),
                      [](const Project& a, const Project& b) { return a.favorite && !b.favorite; });
 
-    // 엔진: --engine, engines.txt, 프로젝트가 가리키는 엔진, 엔진 저장소 자신(engine 줄이 없는 프로젝트)
+    // Engines: --engine, engines.txt, engines projects point to, the engine repo itself (projects without an engine line)
     std::vector<std::string> candidates;
     if (!extraEngine.empty()) candidates.push_back(extraEngine);
     for (const std::string& dir : readList(join(user, "engines.txt"))) candidates.push_back(dir);
@@ -192,7 +192,7 @@ void Catalog::load(const std::string& extraEngine) {
         if (!known && readEngine(dir, e)) m_engines.push_back(std::move(e));
     }
 
-    // 도구: tools\<도구>\, 에디터 설정의 toolPath (그 폴더에 매니페스트가 있거나 그 아래 폴더마다 있다). 에디터 editor/Tools.cpp와 같은 규칙
+    // Tools: tools\<tool>\, toolPath in editor settings (that folder has a manifest, or each folder under it does). Same rules as the editor's editor/Tools.cpp
     const std::string settings = join(user, "editor_settings.txt");
     std::vector<std::string> roots = {join(user, "tools")};
     for (const std::string& line : readList(settings))
@@ -229,7 +229,7 @@ const Engine* Catalog::engineFor(const Project& project) const {
 
 bool Catalog::needsUpgrade(const Project& project) const {
     const Engine* engine = engineFor(project);
-    // 엔진 저장소 자신(engine 줄 없음)과 engineVersion 없는 옛 프로젝트는 묻지 않는다 (에디터와 같다)
+    // The engine repo itself (no engine line) and old projects without engineVersion aren't asked about (same as the editor)
     return engine && !project.engine.empty() && !project.engineVersion.empty() && project.engineVersion != engine->version;
 }
 

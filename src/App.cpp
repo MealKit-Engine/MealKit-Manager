@@ -22,7 +22,7 @@ bool containsNoCase(const std::string& text, const char* needle) {
     return it != text.end();
 }
 
-// 이름은 exe 이름과 CMake 타깃 이름이 된다 (new_project.ps1과 같은 규칙)
+// The name becomes the exe name and the CMake target name (same rules as new_project.ps1)
 bool validGameName(const char* name) {
     if (!std::isalpha(static_cast<unsigned char>(name[0]))) return false;
     for (const char* c = name; *c; ++c)
@@ -79,7 +79,7 @@ void App::reload() { m_catalog.load(m_extraEngine); }
 void App::frame() {
     takePickedFolder();
     if (m_job.takeFinished()) {
-        if (m_jobListsModules) { // 모듈 목록: 상태 줄은 그대로 두고 [모듈] 탭에 보인다
+        if (m_jobListsModules) { // module list: the status line stays and it shows in the [Modules] tab
             m_jobListsModules = false;
             m_modules = parseModuleList(m_job.output());
             if (m_job.exitCode() != 0) m_modules.error = m_job.output();
@@ -93,7 +93,7 @@ void App::frame() {
 void App::finishJob() {
     if (m_jobChangesModules) {
         m_jobChangesModules = false;
-        m_modulesFor.clear(); // 성공했든 아니든 지금 상태를 다시 받는다
+        m_modulesFor.clear(); // refetch the current state whether it succeeded or not
     }
     const bool ok = m_job.exitCode() == 0;
     m_status = ok ? trf("%s: done", m_job.label().c_str()) : trf("%s: failed (exit code %d)", m_job.label().c_str(), m_job.exitCode());
@@ -175,7 +175,7 @@ void App::projectsTab() {
                 m_catalog.setFavorite(p.directory, !p.favorite);
                 ImGui::PopID();
                 reload();
-                break; // 목록이 바뀌었다
+                break; // the list changed
             }
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Favorite"));
 
@@ -205,7 +205,7 @@ void App::projectsTab() {
         ImGui::EndTable();
     }
 
-    // 고른 프로젝트 동작
+    // Actions for the selected project
     ImGui::BeginDisabled(!selected || busy);
     if (ImGui::Button(tr("Open in Editor")) && selected) openProject(*selected);
     ImGui::SameLine();
@@ -251,7 +251,7 @@ void App::enginesTab() {
             else {
                 ImGui::BeginDisabled(m_job.running());
                 if (ImGui::SmallButton(tr("Build Editor")))
-                    // 콘솔이 없어 시스템 코드 페이지로 돈다 (ninja의 /showIncludes 접두어와 맞는다)
+                    // No console, so it runs in the system code page (matches ninja's /showIncludes prefix)
                     m_job.start(tr("Editor build"), {"cmd.exe", "/d", "/c", pathJoin(e.directory, "build.bat"), "Editor"});
                 ImGui::EndDisabled();
             }
@@ -273,7 +273,7 @@ void App::runModuleTool(const Engine& engine, const Project& project, const std:
     }
 }
 
-// 고른 프로젝트의 소스 모듈. 규칙은 그 프로젝트 엔진의 tools\module.ps1 한 곳 (search -Tsv로 목록, add·update·remove로 바꾼다)
+// Source modules of the selected project. The rules live in one place, that project's engine tools\module.ps1 (list via search -Tsv, changes via add/update/remove)
 void App::modulesTab() {
     const Project* project = nullptr;
     for (const Project& p : m_catalog.projects())
@@ -530,7 +530,7 @@ void App::openProject(const Project& project) {
         m_statusError = true;
         return;
     }
-    m_catalog.addRecent(project.directory); // 에디터도 열면 더하지만, 목록 순서를 바로 맞춘다
+    m_catalog.addRecent(project.directory); // the editor adds it too when opening, but this fixes the list order right away
     m_status = trf("Opened %s", project.name.c_str());
     m_statusError = false;
     reload();
@@ -548,7 +548,7 @@ void App::pickFolder(int purpose) {
     {
         std::lock_guard<std::mutex> lock(m_pickMutex);
         m_pickPurpose = purpose;
-        m_picked = "\x01"; // 기다리는 중
+        m_picked = "\x01"; // waiting
     }
     g_pickTarget = {&m_pickMutex, &m_picked};
     SDL_ShowOpenFolderDialog(onFolderPicked, &g_pickTarget, window, purpose == 2 ? m_newLocation : nullptr, false);
@@ -564,7 +564,7 @@ void App::takePickedFolder() {
         purpose = m_pickPurpose;
         m_pickPurpose = -1;
     }
-    if (picked.empty()) return; // 취소
+    if (picked.empty()) return; // canceled
     if (purpose == 0) {
         Project p;
         if (!readProject(picked, p)) {

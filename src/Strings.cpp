@@ -12,7 +12,7 @@ struct Pair {
     const char* ko;
 };
 
-// 새 글자를 화면에 쓰면 여기에 한국어를 더한다 (tests/CatalogTests.cpp가 App.cpp의 tr 글자가 모두 있는지 본다)
+// When new text is shown on screen, add its Korean here (tests/CatalogTests.cpp checks that all tr text in App.cpp exists)
 constexpr Pair kKorean[] = {
     {"Projects", "프로젝트"},
     {"Engines", "엔진"},

@@ -1,8 +1,8 @@
-// MealKit Manager 실행 파일: SDL3 창 + SDL_Renderer + Dear ImGui (MealKit Audio 도구와 같은 틀). 실제 화면은 App.
-//   MealKitManager [--engine <엔진 폴더>] [--lang ko|en] [--modules <프로젝트 폴더>] [--frames N --capture <png>]   (--modules: [모듈] 탭으로 시작)
-//   MealKitManager --list      창 없이 프로젝트·엔진·도구 목록을 출력 (시험·스크립트용)
-//   MealKitManager [--engine <엔진>] --new <이름> --path <위치>   창 없이 새 프로젝트 (화면 [새 프로젝트]와 같은 스크립트)
-//   MealKitManager --open <프로젝트 폴더>                         창 없이 그 프로젝트의 엔진 에디터로 연다
+// MealKit Manager executable: SDL3 window + SDL_Renderer + Dear ImGui (same framework as the MealKit Audio tool). The actual screen is App.
+//   MealKitManager [--engine <engine folder>] [--lang ko|en] [--modules <project folder>] [--frames N --capture <png>]   (--modules: start on the [Modules] tab)
+//   MealKitManager --list      prints project/engine/tool lists without a window (for tests/scripts)
+//   MealKitManager [--engine <engine>] --new <name> --path <location>   new project without a window (same script as the screen's [New Project])
+//   MealKitManager --open <project folder>                         opens that project in its engine's editor without a window
 //   MealKitManager --version
 #include "App.h"
 #include "Strings.h"
@@ -20,7 +20,7 @@
 
 namespace {
 
-// 시스템 글꼴 + 한국어 글꼴 합치기 (없으면 ImGui 기본 벡터 글꼴)
+// Merges a system font + a Korean font (ImGui's default vector font if none)
 void loadFonts(float size) {
     ImGuiIO& io = ImGui::GetIO();
     const char* latin[] = {
@@ -71,7 +71,7 @@ int printList(const mkmanager::Catalog& catalog) {
     return 0;
 }
 
-// --new: 화면의 [새 프로젝트]와 같은 일 (첫 번째 엔진의 new_project.ps1, 성공하면 최근 목록 맨 위)
+// --new: same as [New Project] on the screen (the first engine's new_project.ps1; on success, to the top of the recent list)
 int newProject(mkmanager::Catalog& catalog, const std::string& name, const std::string& path) {
     if (catalog.engines().empty()) {
         std::printf("No engine found (use --engine <folder>)\n");
@@ -91,7 +91,7 @@ int newProject(mkmanager::Catalog& catalog, const std::string& name, const std::
     return 0;
 }
 
-// --open: 화면의 [에디터에서 열기]와 같은 일
+// --open: same as [Open in Editor] on the screen
 int openProject(const mkmanager::Catalog& catalog, const std::string& directory) {
     mkmanager::Project project;
     if (!mkmanager::readProject(directory, project)) {
@@ -116,7 +116,7 @@ int openProject(const mkmanager::Catalog& catalog, const std::string& directory)
 
 int main(int argc, char** argv) {
     std::string engine, capture, language, newName, newPath, open, modules;
-    long frames = 0; // --frames N: N프레임 뒤 끝낸다 (--capture로 마지막 화면을 PNG로, 문서·시험용)
+    long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
     bool list = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--engine") == 0 && i + 1 < argc) engine = argv[++i];
@@ -133,7 +133,7 @@ int main(int argc, char** argv) {
             return 0;
         }
     }
-    if (list || !newName.empty() || !open.empty()) { // 창 없는 명령
+    if (list || !newName.empty() || !open.empty()) { // windowless commands
         if (!engine.empty()) {
             mkmanager::Engine probe;
             if (mkmanager::readEngine(engine, probe)) mkmanager::Catalog().addEngine(engine);
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = nullptr; // 창 하나라 저장할 배치가 없다
+    io.IniFilename = nullptr; // a single window, so there's no layout to save
     ImGui::StyleColorsDark();
     ImGuiStyle& style = ImGui::GetStyle();
     style.ScaleAllSizes(scale);
