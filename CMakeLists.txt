@@ -22,9 +22,14 @@ add_library(mkmanager_imgui STATIC
 target_include_directories(mkmanager_imgui PUBLIC ${imgui_dir} ${imgui_dir}/backends)
 target_link_libraries(mkmanager_imgui PUBLIC SDL3::SDL3-static)
 
+# Tool contract (MealKit-Contract, copied into third_party/mkcontract with that repo's tools/vendor.ps1): user folder, lists, tool manifests, module list
+set(MKCONTRACT_BUILD_TESTS OFF)
+add_subdirectory(third_party/mkcontract)
+
 # Data layer (no window, used by tests)
 add_library(mkmanager_core STATIC src/Catalog.h src/Catalog.cpp src/Strings.h src/Strings.cpp)
 target_include_directories(mkmanager_core PUBLIC src)
+target_link_libraries(mkmanager_core PUBLIC mkcontract)
 target_compile_features(mkmanager_core PUBLIC cxx_std_20)
 
 add_executable(MealKitManager WIN32 src/main.cpp src/App.h src/App.cpp src/Job.h src/Job.cpp)

@@ -45,3 +45,5 @@ MealKitManager --frames N --capture shot.png            draw N frames, save the 
 ## Third-party
 
 [SDL3](https://github.com/libsdl-org/SDL) (zlib) and [Dear ImGui](https://github.com/ocornut/imgui) (MIT) in `third_party/`, the same versions as MealKit Audio.
+[mkcontract](https://github.com/MealKit-Engine/MealKit-Contract) (MIT) in `third_party/mkcontract/` reads and writes the shared files in the table above, the same code the MealKit editor uses
+(its `docs/CONTRACT.md` is the spec). Update it with that repo's `tools/vendor.ps1 -To third_party/mkcontract`.

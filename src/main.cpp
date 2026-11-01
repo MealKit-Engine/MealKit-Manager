@@ -65,7 +65,7 @@ int printList(const mkmanager::Catalog& catalog) {
                     catalog.needsUpgrade(p) ? " upgrade" : "");
     }
     for (const mkmanager::Tool& t : catalog.tools())
-        std::printf("tool: %s %s protocol %d %s%s\n", t.name.c_str(), t.version.c_str(), t.protocol, t.exe.c_str(),
+        std::printf("tool: %s %s protocol %u %s%s\n", t.name.c_str(), t.version.c_str(), t.protocol, t.exe.c_str(),
                     t.protocol != mkmanager::kLiveProtocol ? " (protocol differs)" : "");
     std::fflush(stdout);
     return 0;

@@ -1,14 +1,16 @@
 #pragma once
 
 // What MealKit Manager handles: projects, installed engines, tools. A data layer that knows nothing about windows/ImGui (tested by tests/CatalogTests.cpp).
-// Connects to the engine only through files (engine docs/CODING_MODEL.md "Contract between tools"):
-//   user folder %LOCALAPPDATA%\MealKit\ (tests change it with the environment variable MEALKIT_USER_DIR)
-//     recent_projects.txt, favorite_projects.txt   lists shared with the editor (one folder per line)
-//     engines.txt                                  engine folders added by Manager (one per line)
-//     editor_settings.txt                          editor settings: reads the language and toolPath lines
-//     tools\<tool>\mealkit-tool.txt               manifests of installed tools (@format tool 1)
+// Connects to the engine only through files. The shared ones (the user folder and its lists, tool manifests, the module list lines) are read with the
+// tool contract library mkcontract (MealKit-Contract, third_party/mkcontract, its docs/CONTRACT.md), the same code the engine editor uses. Read here:
 //   mealkit.project in the project folder         name, engine (engine folder), engineVersion, created lines
 //   engine folder                                 VERSION, build\Editor\bin\MealKitEditor.exe, tools\new_project.ps1
+#include <mkcontract/Files.h>
+#include <mkcontract/Live.h>
+#include <mkcontract/Modules.h>
+#include <mkcontract/Tool.h>
+#include <mkcontract/User.h>
+
 #include <string>
 #include <vector>
 
@@ -31,54 +33,25 @@ struct Engine {
     bool valid = false;    // has VERSION and tools\new_project.ps1
 };
 
-struct Tool {
-    std::string folder; // folder containing the manifest
-    std::string name;
-    std::string exe;    // absolute path
-    std::string version;
-    int protocol = 0;   // live connection contract version (engine live::kProtocol)
-    std::string opens;  // file extensions this tool opens (space-separated)
-};
+using Tool = mkcontract::ToolManifest;
 
-// Source modules (engine docs/MODULES.md). Read from the output of the engine's tools\module.ps1 search -Tsv -Project <folder>
-// (same contract as parseModuleList in the engine editor's editor/ModulesPanel.cpp: change all three places together when the line shape changes)
-struct InstalledModule {
-    std::string name, version, source;
-    int modified = 0; // number of files the game modified after install
-    int pending = 0;  // number of .new files left by an update
-};
+// Source modules (engine docs/MODULES.md), from the engine's tools\module.ps1 search -Tsv -Project <folder>
+using mkcontract::InstalledModule;
+using mkcontract::ModuleList;
+using mkcontract::parseModuleList;
+using mkcontract::RegistryModule;
 
-struct RegistryModule {
-    std::string name;
-    std::string version;      // newest version for the project's engine MINOR (blank if none)
-    std::string latest;       // newest version
-    std::string latestEngine; // engine MAJOR.MINOR of that version
-    std::string title, summary, tags, author, repo;
-};
+inline constexpr uint32_t kLiveProtocol = mkcontract::live::kProtocol; // live connection contract version this Manager knows
 
-struct ModuleList {
-    std::vector<InstalledModule> installed;
-    std::vector<RegistryModule> registry;
-    std::string error; // why the registry list couldn't be fetched
-};
-
-ModuleList parseModuleList(const std::string& output);
-
-constexpr int kLiveProtocol = 1; // live connection contract version this Manager knows
-
-std::string userDirectory();
-// List files with one item per line (ignores BOM, empty lines, leading/trailing spaces)
-std::vector<std::string> readList(const std::string& path);
-void writeList(const std::string& path, const std::vector<std::string>& list);
-// Normalizing folder notation (absolute path, no trailing separator, \ on Windows) / whether it's the same folder (case-insensitive on Windows)
-std::string normalizeDirectory(const std::string& directory);
-bool sameDirectory(const std::string& a, const std::string& b);
+using mkcontract::normalizeDirectory;
+using mkcontract::readKey;
+using mkcontract::readList;
+using mkcontract::sameDirectory;
+using mkcontract::userDirectory;
+using mkcontract::writeList;
 
 bool readProject(const std::string& directory, Project& out);
 bool readEngine(const std::string& directory, Engine& out);
-bool readToolManifest(const std::string& folder, Tool& out);
-// One key from a "key value" line file (the first value). Comments (#) and @format lines are skipped
-std::string readKey(const std::string& path, const std::string& key);
 
 class Catalog {
 public:

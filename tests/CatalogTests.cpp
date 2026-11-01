@@ -83,7 +83,7 @@ void testCatalog(const fs::path& root) {
     CHECK(catalog.tools().size() == 2);
     if (catalog.tools().size() == 2) {
         CHECK(catalog.tools()[0].name == "Future Tool" && catalog.tools()[0].protocol == 9);
-        CHECK(catalog.tools()[1].name == "MealKit Audio" && catalog.tools()[1].opens == ".events .wav");
+        CHECK(catalog.tools()[1].name == "MealKit Audio" && catalog.tools()[1].opens == (std::vector<std::string>{".events", ".wav"}));
         CHECK(fs::path(catalog.tools()[1].exe).filename() == "MealKitAudio.exe");
     }
 
