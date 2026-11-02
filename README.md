@@ -37,7 +37,7 @@ Other platforms: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cma
 ```
 MealKitManager [--engine <engine folder>] [--lang ko|en]
 MealKitManager --list                                   print engines, projects and tools
-MealKitManager [--engine <folder>] --new <Name> --path <folder>   create a project without a window
+MealKitManager [--engine <folder>] --new <Name> --path <folder> [--template arena|empty]   create a project without a window (empty: engine 0.7.21+)
 MealKitManager --open <project folder>                  open a project in its engine's editor
 MealKitManager --frames N --capture shot.png            draw N frames, save the last one, quit
 ```

@@ -471,14 +471,29 @@ void App::newProjectPopup() {
             ImGui::EndCombo();
         }
     }
+    // Project templates: engines that have templates\empty take new_project.ps1 -Template (older ones only make arena projects)
+    const bool templates = !engines.empty() && fileExists(pathJoin(engines[m_newEngine].directory, "templates\\empty\\source\\app\\GameSession.cpp"));
+    if (!templates) m_newTemplate = 0;
+    else {
+        const char* const labels[] = {tr("Arena versus (sample game)"), tr("Empty")};
+        if (ImGui::BeginCombo(tr("Template"), labels[m_newTemplate])) {
+            for (int i = 0; i < 2; ++i)
+                if (ImGui::Selectable(labels[i], i == m_newTemplate)) m_newTemplate = i;
+            ImGui::EndCombo();
+        }
+        ImGui::TextDisabled("%s", m_newTemplate == 0
+                                      ? tr("A copy of the sample game: physics party versus with AI, boxes, jump pads and cutscenes.")
+                                      : tr("One character per player on a floor, with the title, lobby and results screens."));
+    }
     ImGui::TextDisabled("%s", pathJoin(m_newLocation, m_newName).c_str());
     ImGui::Separator();
     ImGui::BeginDisabled(!nameOk || engines.empty() || !m_newLocation[0]);
     if (ImGui::Button(tr("Create"))) {
         saveProjectLocation(m_newLocation);
         const Engine& engine = engines[m_newEngine];
-        runScript(tr("New project"), pathJoin(engine.directory, "tools\\new_project.ps1"), {"-Name", m_newName, "-Path", m_newLocation},
-                  pathJoin(m_newLocation, m_newName));
+        std::vector<std::string> args = {"-Name", m_newName, "-Path", m_newLocation};
+        if (m_newTemplate == 1) args.insert(args.end(), {"-Template", "empty"});
+        runScript(tr("New project"), pathJoin(engine.directory, "tools\\new_project.ps1"), args, pathJoin(m_newLocation, m_newName));
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndDisabled();

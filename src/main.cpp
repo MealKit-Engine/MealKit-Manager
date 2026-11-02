@@ -1,7 +1,7 @@
 // MealKit Manager executable: SDL3 window + SDL_Renderer + Dear ImGui (same framework as the MealKit Audio tool). The actual screen is App.
 //   MealKitManager [--engine <engine folder>] [--lang ko|en] [--modules <project folder>] [--frames N --capture <png>]   (--modules: start on the [Modules] tab)
 //   MealKitManager --list      prints project/engine/tool lists without a window (for tests/scripts)
-//   MealKitManager [--engine <engine>] --new <name> --path <location>   new project without a window (same script as the screen's [New Project])
+//   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty]   new project without a window (same script as the screen's [New Project])
 //   MealKitManager --open <project folder>                         opens that project in its engine's editor without a window
 //   MealKitManager --version
 #include "App.h"
@@ -72,14 +72,16 @@ int printList(const mkmanager::Catalog& catalog) {
 }
 
 // --new: same as [New Project] on the screen (the first engine's new_project.ps1; on success, to the top of the recent list)
-int newProject(mkmanager::Catalog& catalog, const std::string& name, const std::string& path) {
+int newProject(mkmanager::Catalog& catalog, const std::string& name, const std::string& path, const std::string& projectTemplate) {
     if (catalog.engines().empty()) {
         std::printf("No engine found (use --engine <folder>)\n");
         return 1;
     }
     const mkmanager::Engine& engine = catalog.engines()[0];
     mkmanager::Job job;
-    job.start("new project", mkmanager::powershellArgs(engine.directory + "\\tools\\new_project.ps1", {"-Name", name, "-Path", path}));
+    std::vector<std::string> args = {"-Name", name, "-Path", path};
+    if (!projectTemplate.empty()) args.insert(args.end(), {"-Template", projectTemplate}); // engines from 0.7.21
+    job.start("new project", mkmanager::powershellArgs(engine.directory + "\\tools\\new_project.ps1", args));
     while (!job.takeFinished()) SDL_Delay(50);
     std::printf("%s", job.output().c_str());
     if (job.exitCode() != 0) {
@@ -115,12 +117,13 @@ int openProject(const mkmanager::Catalog& catalog, const std::string& directory)
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string engine, capture, language, newName, newPath, open, modules;
+    std::string engine, capture, language, newName, newPath, newTemplate, open, modules;
     long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
     bool list = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--engine") == 0 && i + 1 < argc) engine = argv[++i];
         else if (std::strcmp(argv[i], "--new") == 0 && i + 1 < argc) newName = argv[++i];
+        else if (std::strcmp(argv[i], "--template") == 0 && i + 1 < argc) newTemplate = argv[++i];
         else if (std::strcmp(argv[i], "--path") == 0 && i + 1 < argc) newPath = argv[++i];
         else if (std::strcmp(argv[i], "--open") == 0 && i + 1 < argc) open = argv[++i];
         else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) frames = std::strtol(argv[++i], nullptr, 10);
@@ -140,7 +143,7 @@ int main(int argc, char** argv) {
         }
         mkmanager::Catalog catalog;
         catalog.load(engine);
-        if (!newName.empty()) return newProject(catalog, newName, newPath.empty() ? "." : newPath);
+        if (!newName.empty()) return newProject(catalog, newName, newPath.empty() ? "." : newPath, newTemplate);
         if (!open.empty()) return openProject(catalog, open);
         return printList(catalog);
     }

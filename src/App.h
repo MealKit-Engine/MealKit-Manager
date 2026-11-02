@@ -64,6 +64,7 @@ private:
     // New project
     bool m_openNew = false;
     char m_newName[64] = "MyGame";
+    int m_newTemplate = 0; // 0 arena, 1 empty (new_project.ps1 -Template, engines from 0.7.21)
     char m_newLocation[512] = {};
     int m_newEngine = 0;
 
