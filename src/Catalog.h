@@ -19,7 +19,7 @@ namespace mkmanager {
 struct Project {
     std::string directory;
     std::string name;
-    std::string engine;        // engine line of mealkit.project (blank if absent: the engine repo itself)
+    std::string engine;        // engine line of mealkit.project (blank if absent: the engine repo itself or a sample inside it)
     std::string engineVersion; // engine version that created or upgraded the project
     std::string created;
     bool valid = false;        // the folder has mealkit.project with a name
@@ -63,7 +63,7 @@ public:
     const std::vector<Tool>& tools() const { return m_tools; }
     const std::string& language() const { return m_language; }
 
-    // Engine that opens the project: the folder in the engine line, or the project folder itself if absent (engine repo). nullptr if not found
+    // Engine that opens the project: the folder in the engine line, or if absent the project folder or its nearest parent that is an engine (engine repo and its samples). nullptr if not found
     const Engine* engineFor(const Project& project) const;
     // Whether it needs upgrading to this engine (project engineVersion != engine VERSION)
     bool needsUpgrade(const Project& project) const;

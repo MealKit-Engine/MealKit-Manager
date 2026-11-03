@@ -1,12 +1,25 @@
 #include "Catalog.h"
 
 #include <algorithm>
+#include <filesystem>
 
 namespace mkmanager {
 namespace {
 
 using mkcontract::joinPath;
 using mkcontract::pathExists;
+
+// Folders that may hold the project's engine: the engine line, or (absent) the project folder and its parents,
+// since a sample inside the engine repo (samples/sandbox) has no engine line either
+std::vector<std::string> engineCandidates(const Project& project) {
+    if (!project.engine.empty()) return {project.engine};
+    std::vector<std::string> dirs;
+    for (std::filesystem::path dir = mkcontract::pathOf(project.directory); !dir.empty(); dir = dir.parent_path()) {
+        dirs.push_back(mkcontract::utf8Of(dir));
+        if (dir == dir.parent_path()) break;
+    }
+    return dirs;
+}
 
 } // namespace
 
@@ -55,7 +68,10 @@ void Catalog::load(const std::string& extraEngine) {
     for (const std::string& dir : mkcontract::addedEngines()) candidates.push_back(dir);
     for (const Project& p : m_projects) {
         if (!p.valid) continue;
-        candidates.push_back(p.engine.empty() ? p.directory : p.engine);
+        for (const std::string& dir : engineCandidates(p)) {
+            Engine e;
+            if (readEngine(dir, e)) { candidates.push_back(dir); break; }
+        }
     }
     m_engines.clear();
     for (const std::string& dir : candidates) {
@@ -72,9 +88,9 @@ void Catalog::load(const std::string& extraEngine) {
 }
 
 const Engine* Catalog::engineFor(const Project& project) const {
-    const std::string dir = project.engine.empty() ? project.directory : project.engine;
-    for (const Engine& e : m_engines)
-        if (sameDirectory(e.directory, dir)) return &e;
+    for (const std::string& dir : engineCandidates(project))
+        for (const Engine& e : m_engines)
+            if (sameDirectory(e.directory, dir)) return &e;
     return nullptr;
 }
 

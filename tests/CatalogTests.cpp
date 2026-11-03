@@ -43,15 +43,15 @@ void setUserDirectory(const fs::path& dir) {
 
 void testCatalog(const fs::path& root) {
     const fs::path user = root / "user", engine = root / "engine", game = root / "games" / "Game", old = root / "games" / "Old";
-    // Engine: VERSION + new_project.ps1 + a built editor. The engine repo itself is a project too (no engine line)
+    // Engine: VERSION + new_project.ps1 + a built editor. Its sample inside the repo is a project too (no engine line)
     write(engine / "VERSION", "0.5.2\n");
     write(engine / "tools" / "new_project.ps1", "#\n");
     write(engine / "build" / "Editor" / "bin" / "MealKitEditor.exe", "");
-    write(engine / "mealkit.project", "# comment\n@format project 1\nname sandbox\n");
+    write(engine / "samples" / "sandbox" / "mealkit.project", "# comment\n@format project 1\nname sandbox\n");
     write(game / "mealkit.project", "\xEF\xBB\xBF# MealKit project\n@format project 1\nname Game\nengine " + str(engine) +
                                         "\nengineVersion 0.5.2\ncreated 2026-10-01\n");
     write(old / "mealkit.project", "@format project 1\nname Old\nengine " + str(engine) + "\nengineVersion 0.4.1\n");
-    write(user / "recent_projects.txt", str(engine) + "\n" + str(game) + "\n" + str(old) + "\n" + str(root / "gone") + "\n");
+    write(user / "recent_projects.txt", str(engine / "samples" / "sandbox") + "\n" + str(game) + "\n" + str(old) + "\n" + str(root / "gone") + "\n");
     write(user / "favorite_projects.txt", str(old) + "\n");
     write(user / "editor_settings.txt", "language en\ntoolPath " + str(root / "devtool") + "\n");
     write(user / "tools" / "audio" / "mealkit-tool.txt", "# MealKit tool manifest\n@format tool 1\nname MealKit Audio\nexe MealKitAudio.exe\nversion 0.2.0\nprotocol 1\nopens .events .wav\n");
