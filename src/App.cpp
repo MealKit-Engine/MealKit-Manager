@@ -314,11 +314,13 @@ void App::modulesTab() {
         ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Update  Remove  ").x * 1.6f);
         ImGui::TableHeadersRow();
         for (const InstalledModule& m : m_modules.installed) {
+            if (!containsNoCase(m.name + " " + m.title + " " + m.summary + " " + m.tags, m_moduleSearch)) continue;
             ImGui::PushID(m.name.c_str());
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(m.name.c_str());
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", m.source.c_str());
+            ImGui::TextUnformatted(m.title.empty() || m.title == m.name ? m.name.c_str() : (m.title + "  (" + m.name + ")").c_str());
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", m.summary.empty() ? m.source.c_str() : (m.summary + "\n" + m.source).c_str());
+            if (!m.tags.empty()) ImGui::TextDisabled("%s", m.tags.c_str()); // module.txt fields on installed lines (blank from older engines)
             ImGui::TableNextColumn();
             const RegistryModule* reg = nullptr;
             for (const RegistryModule& r : m_modules.registry)
