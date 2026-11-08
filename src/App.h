@@ -13,6 +13,7 @@ namespace mkmanager {
 
 class App {
 public:
+    bool iconFont = false; // module icons can be drawn (loadFonts merged an icon font)
     SDL_Window* window = nullptr;
 
     void init(const std::string& extraEngine);
@@ -32,6 +33,7 @@ private:
     void enginesTab();
     void toolsTab();
     void modulesTab();
+    std::string withIcon(const std::string& icon, const std::string& tags, const std::string& name, const std::string& label) const;
     void runModuleTool(const Engine& engine, const Project& project, const std::string& label, std::vector<std::string> args, bool listing);
     void newProjectPopup();
     void statusBar();

@@ -41,6 +41,36 @@ ModuleList parseModuleList(const std::string& output) {
     return list;
 }
 
+const char* const kModuleIconKeywords[] = {"gameplay", "game", "timer", "combat", "health", "ai", "map", "save", "ui",
+                                           "audio", "render", "rhi", "camera", "physics", "net", "online", "input", "data",
+                                           "asset", "scene", "debug", "tool", "editor", "settings", "loc", "feedback", "live",
+                                           "session", "sim"};
+const int kModuleIconKeywordCount = static_cast<int>(sizeof(kModuleIconKeywords) / sizeof(kModuleIconKeywords[0]));
+
+namespace {
+bool isIconKeyword(const std::string& word) {
+    for (int i = 0; i < kModuleIconKeywordCount; ++i)
+        if (word == kModuleIconKeywords[i]) return true;
+    return false;
+}
+} // namespace
+
+std::string moduleIconKeyword(const std::string& icon, const std::string& tags, const std::string& name) {
+    if (isIconKeyword(icon)) return icon;
+    size_t start = 0;
+    while (start < tags.size()) {
+        size_t end = tags.find(' ', start);
+        if (end == std::string::npos) end = tags.size();
+        const std::string tag = tags.substr(start, end - start);
+        if (tag != "engine" && isIconKeyword(tag)) return tag;
+        start = end + 1;
+    }
+    if (isIconKeyword(name)) return name;
+    const size_t dash = name.find('-');
+    if (dash != std::string::npos && isIconKeyword(name.substr(0, dash))) return name.substr(0, dash);
+    return std::string();
+}
+
 bool hasTag(const std::string& tags, const std::string& tag) {
     if (tag.empty()) return false;
     for (size_t at = tags.find(tag); at != std::string::npos; at = tags.find(tag, at + 1)) {

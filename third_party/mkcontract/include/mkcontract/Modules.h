@@ -40,4 +40,12 @@ ModuleList parseModuleList(const std::string& output);
 // Whether a space-separated tag list has this tag (exact word match)
 bool hasTag(const std::string& tags, const std::string& tag);
 
+// Icon keywords (docs/CONTRACT.md "Module icons"): every program draws its own picture for each, in this order
+extern const char* const kModuleIconKeywords[];
+extern const int kModuleIconKeywordCount;
+
+// The icon keyword a module shows: its "icon" if that is a keyword, else the first tag that is one, else its name
+// (engine module names are keywords; a backend like online-steam takes online's), else "" (each program draws a default)
+std::string moduleIconKeyword(const std::string& icon, const std::string& tags, const std::string& name);
+
 } // namespace mkcontract

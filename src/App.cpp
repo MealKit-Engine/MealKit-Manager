@@ -273,6 +273,30 @@ void App::runModuleTool(const Engine& engine, const Project& project, const std:
     }
 }
 
+namespace {
+// Module icon keywords (mkcontract::moduleIconKeyword) as Segoe Fluent Icons / MDL2 Assets glyphs, the same as the editor's [Modules] window
+const char* keywordGlyph(const std::string& keyword) {
+    static const std::pair<const char*, const char*> glyphs[] = {
+        {"gameplay", "\xEE\x9F\xBC"}, {"game", "\xEE\x9F\xBC"},   {"timer", "\xEE\xA4\x96"},  {"combat", "\xEE\xA8\x98"},
+        {"health", "\xEE\xAD\x91"},   {"ai", "\xEE\xA6\x9A"},     {"map", "\xEE\x9C\x87"},    {"save", "\xEE\x9D\x8E"},
+        {"ui", "\xEE\x9F\xB4"},       {"audio", "\xEE\x9D\xA7"},  {"render", "\xEE\x9E\x90"}, {"rhi", "\xEE\x9E\x90"},
+        {"camera", "\xEE\x9C\xA2"},   {"physics", "\xEF\x85\x98"}, {"net", "\xEE\xA5\xA8"},   {"online", "\xEE\x9D\xB4"},
+        {"input", "\xEE\x9D\xA5"},    {"data", "\xEE\xA3\xAF"},   {"asset", "\xEE\xA2\xB7"},  {"scene", "\xEE\xA3\xBD"},
+        {"debug", "\xEE\xAF\xA8"},    {"tool", "\xEE\xA4\x8F"},   {"editor", "\xEE\xA4\x8F"}, {"settings", "\xEE\x9C\x93"},
+        {"loc", "\xEE\xA3\x81"},      {"feedback", "\xEE\xA5\x85"}, {"live", "\xEE\xA2\x95"}, {"session", "\xEE\x9C\x96"},
+        {"sim", "\xEE\xA7\xB5"}};
+    for (const auto& [k, g] : glyphs)
+        if (keyword == k) return g;
+    return "\xEE\xAA\x86"; // puzzle piece
+}
+} // namespace
+
+// "<icon>  <label>" when the icon font is there
+std::string App::withIcon(const std::string& icon, const std::string& tags, const std::string& name, const std::string& label) const {
+    if (!iconFont) return label;
+    return std::string(keywordGlyph(mkcontract::moduleIconKeyword(icon, tags, name))) + "  " + label;
+}
+
 // Source modules of the selected project. The rules live in one place, that project's engine tools\module.ps1 (list via search -Tsv, changes via add/update/remove)
 void App::modulesTab() {
     const Project* project = nullptr;
@@ -318,7 +342,7 @@ void App::modulesTab() {
             ImGui::PushID(m.name.c_str());
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(m.title.empty() || m.title == m.name ? m.name.c_str() : (m.title + "  (" + m.name + ")").c_str());
+            ImGui::TextUnformatted(withIcon(m.icon, m.tags, m.name, m.title.empty() || m.title == m.name ? m.name : m.title + "  (" + m.name + ")").c_str());
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", m.summary.empty() ? m.source.c_str() : (m.summary + "\n" + m.source).c_str());
             if (!m.tags.empty()) ImGui::TextDisabled("%s", m.tags.c_str()); // module.txt fields on installed lines (blank from older engines)
             ImGui::TableNextColumn();
@@ -359,7 +383,7 @@ void App::modulesTab() {
             ImGui::PushID(r.name.c_str());
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(r.name.c_str());
+            ImGui::TextUnformatted(withIcon(r.icon, r.tags, r.name, r.name).c_str());
             if (r.version.empty()) ImGui::TextColored(warn, "%s", trf("%s (engine %s)", r.latest.c_str(), r.latestEngine.c_str()).c_str());
             else ImGui::TextDisabled("%s", r.version.c_str());
             ImGui::TableNextColumn();

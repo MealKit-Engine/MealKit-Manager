@@ -21,7 +21,8 @@
 namespace {
 
 // Merges a system font + a Korean font (ImGui's default vector font if none)
-void loadFonts(float size) {
+// Returns whether an icon font (module icons) was merged in
+bool loadFonts(float size) {
     ImGuiIO& io = ImGui::GetIO();
     const char* latin[] = {
 #if defined(_WIN32)
@@ -53,6 +54,16 @@ void loadFonts(float size) {
     merge.MergeMode = true;
     for (const char* path : korean)
         if (SDL_GetPathInfo(path, nullptr) && io.Fonts->AddFontFromFileTTF(path, size, &merge)) break;
+#if defined(_WIN32)
+    // Module icons (App::moduleGlyph): Segoe Fluent Icons on Windows 11, Segoe MDL2 Assets on 10, the same code points as the editor
+    for (const char* path : {"C:\\Windows\\Fonts\\SegoeIcons.ttf", "C:\\Windows\\Fonts\\segmdl2.ttf"}) {
+        ImFontConfig icons;
+        icons.MergeMode = true;
+        icons.GlyphOffset = ImVec2(0.0f, 3.0f);
+        if (SDL_GetPathInfo(path, nullptr) && io.Fonts->AddFontFromFileTTF(path, size, &icons)) return true;
+    }
+#endif
+    return false;
 }
 
 int printList(const mkmanager::Catalog& catalog) {
@@ -175,12 +186,13 @@ int main(int argc, char** argv) {
     style.FontScaleDpi = scale;
     style.FrameRounding = 3.0f;
     style.CellPadding.y *= 2.0f;
-    loadFonts(17.0f);
+    const bool iconFont = loadFonts(17.0f);
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
 
     mkmanager::App app;
     app.window = window;
+    app.iconFont = iconFont;
     app.init(engine);
     if (!language.empty()) mkmanager::setLanguage(language);
     if (!modules.empty()) app.showModulesTab(modules);
