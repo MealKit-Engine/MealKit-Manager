@@ -7,6 +7,9 @@
 #include "App.h"
 #include "Strings.h"
 
+#include <mkcontract/Files.h>
+#include <mkcontract/User.h>
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <imgui.h>
@@ -125,6 +128,58 @@ int openProject(const mkmanager::Catalog& catalog, const std::string& directory)
     return 0;
 }
 
+// Window placement kept between runs: manager_window.txt in the user folder ("x y w h maximized" keys, Manager only)
+struct Placement {
+    int x = 0, y = 0, w = 0, h = 0;
+    bool maximized = false;
+    bool valid() const { return w >= 400 && h >= 300; }
+};
+
+std::string placementPath() { return mkcontract::userPath("manager_window.txt"); }
+
+Placement loadPlacement() {
+    Placement p;
+    const std::string path = placementPath();
+    if (path.empty()) return p;
+    auto key = [&](const char* name) { return std::atoi(mkcontract::readKey(path, name).c_str()); };
+    p.x = key("x");
+    p.y = key("y");
+    p.w = key("w");
+    p.h = key("h");
+    p.maximized = key("maximized") != 0;
+    return p;
+}
+
+// The normal (not maximized/minimized) placement, called on every move/resize so maximizing keeps the size it returns to
+void trackPlacement(SDL_Window* window, Placement& normal) {
+    if (SDL_GetWindowFlags(window) & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_MINIMIZED | SDL_WINDOW_FULLSCREEN)) return;
+    SDL_GetWindowSize(window, &normal.w, &normal.h);
+    SDL_GetWindowPosition(window, &normal.x, &normal.y);
+}
+
+void savePlacement(SDL_Window* window, Placement p) {
+    const std::string path = placementPath();
+    if (path.empty() || !p.valid()) return;
+    p.maximized = (SDL_GetWindowFlags(window) & SDL_WINDOW_MAXIMIZED) != 0;
+    char text[160];
+    std::snprintf(text, sizeof text, "x %d\ny %d\nw %d\nh %d\nmaximized %d\n", p.x, p.y, p.w, p.h, p.maximized ? 1 : 0);
+    mkcontract::writeFile(path, text);
+}
+
+// The saved position only if part of the window's title bar is on some display (a monitor may have been unplugged)
+bool onSomeDisplay(const Placement& p) {
+    int count = 0;
+    SDL_DisplayID* displays = SDL_GetDisplays(&count);
+    bool found = false;
+    for (int i = 0; i < count && !found; ++i) {
+        SDL_Rect r;
+        if (!SDL_GetDisplayUsableBounds(displays[i], &r)) continue;
+        found = p.x + 100 > r.x && p.x < r.x + r.w - 100 && p.y >= r.y - 10 && p.y < r.y + r.h - 50;
+    }
+    SDL_free(displays);
+    return found;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -172,8 +227,19 @@ int main(int argc, char** argv) {
         return 1;
     }
     SDL_SetRenderVSync(renderer, 1);
-    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    const bool automated = frames > 0; // docs/tests captures keep the fixed size
+    const Placement placement = automated ? Placement{} : loadPlacement();
+    if (placement.valid()) {
+        SDL_SetWindowSize(window, placement.w, placement.h);
+        if (onSomeDisplay(placement)) SDL_SetWindowPosition(window, placement.x, placement.y);
+        else SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    } else {
+        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    }
     SDL_ShowWindow(window);
+    Placement normal;
+    trackPlacement(window, normal);
+    if (placement.maximized) SDL_MaximizeWindow(window);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -203,6 +269,7 @@ int main(int argc, char** argv) {
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL3_ProcessEvent(&event);
             if (event.type == SDL_EVENT_QUIT) running = false;
+            if (event.type == SDL_EVENT_WINDOW_MOVED || event.type == SDL_EVENT_WINDOW_RESIZED) trackPlacement(window, normal);
             if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window)) running = false;
         }
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) {
@@ -230,6 +297,7 @@ int main(int argc, char** argv) {
         SDL_RenderPresent(renderer);
     }
 
+    if (!automated) savePlacement(window, normal);
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
