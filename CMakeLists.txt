@@ -1,4 +1,4 @@
-# MealKit Manager: a hub app that gathers and opens MealKit projects, engines, and tools (SDL3 + Dear ImGui, same framework as the MealKit Audio tool).
+# MealKit Manager: a hub app that gathers and opens MealKit projects, engines, and tools (SDL3 + Dear ImGui, same framework as the MkAudio tool).
 # Doesn't link the engine: connects to the engine/editor/tools only through files (mealkit.project, user folder lists, mealkit-tool.txt) and command lines.
 #   build.bat                 (Windows: vcvars64 + Ninja, build\bin\MealKitManager.exe, including tests)
 #   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build && ctest --test-dir build

@@ -1,4 +1,4 @@
-// MealKit Manager executable: SDL3 window + SDL_Renderer + Dear ImGui (same framework as the MealKit Audio tool). The actual screen is App.
+// MealKit Manager executable: SDL3 window + SDL_Renderer + Dear ImGui (same framework as the MkAudio tool). The actual screen is App.
 //   MealKitManager [--engine <engine folder>] [--lang ko|en] [--modules <project folder>] [--frames N --capture <png>]   (--modules: start on the [Modules] tab)
 //   MealKitManager --list      prints project/engine/tool lists without a window (for tests/scripts)
 //   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty]   new project without a window (same script as the screen's [New Project])

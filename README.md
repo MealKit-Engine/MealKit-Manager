@@ -7,7 +7,7 @@ Hub app for the [MealKit](https://github.com/MealKit-Engine/MealKit) tool family
 - **Projects**: recent and favorite projects (the same list the editor keeps), search, create a new project, import a folder, open it in its engine's editor, upgrade it when the engine is newer, show the folder.
 - **Modules**: the source modules of the selected project and the module registry ([MealKit-Modules](https://github.com/MealKit-Engine/MealKit-Modules)). Add, update and remove run the project's engine `tools\module.ps1`.
 - **Engines**: the engines your projects point to, plus folders you add. Builds an engine's editor when it is missing.
-- **Tools**: MealKit tools found by their `mealkit-tool.txt` manifest (for example MealKit Audio), opened with the selected project.
+- **Tools**: MealKit tools found by their `mealkit-tool.txt` manifest (for example MkAudio), opened with the selected project.
 
 The Manager does not link the engine. It talks to it only through files and command lines, so one Manager works with every engine version:
 
@@ -48,11 +48,11 @@ MealKitManager --frames N --capture shot.png            draw N frames, save the 
 
 - It doesn't link the engine: it talks to the engine, the editor and the tools only through files and command lines, and calls the engine's own scripts (`tools\new_project.ps1`, `upgrade_project.ps1`, `build.bat`) as they are. A feature those scripts lack is built in the engine first.
 - The user folder, tool manifests, module list lines and the live protocol version come from [MealKit-Contract](https://github.com/MealKit-Engine/MealKit-Contract) (`third_party/mkcontract`); change them there and copy a tag in with its `tools/vendor.ps1`.
-- Data is in `src/Catalog.*` (no window, under test), running other programs in `src/Job.*`, the screen in `src/App.*`. SDL and Dear ImGui stay at the same versions as MealKit Audio.
+- Data is in `src/Catalog.*` (no window, under test), running other programs in `src/Job.*`, the screen in `src/App.*`. SDL and Dear ImGui stay at the same versions as MkAudio.
 - Contributing: see the [MealKit contributing guide](https://github.com/MealKit-Engine/.github/blob/main/CONTRIBUTING.md).
 
 ## Third-party
 
-[SDL3](https://github.com/libsdl-org/SDL) (zlib) and [Dear ImGui](https://github.com/ocornut/imgui) (MIT) in `third_party/`, the same versions as MealKit Audio.
+[SDL3](https://github.com/libsdl-org/SDL) (zlib) and [Dear ImGui](https://github.com/ocornut/imgui) (MIT) in `third_party/`, the same versions as MkAudio.
 [mkcontract](https://github.com/MealKit-Engine/MealKit-Contract) (MIT) in `third_party/mkcontract/` reads and writes the shared files in the table above, the same code the MealKit editor uses
 (its `docs/CONTRACT.md` is the spec). Update it with that repo's `tools/vendor.ps1 -To third_party/mkcontract`.
