@@ -1,13 +1,16 @@
 #pragma once
 
-// MealKit Manager screen: [Projects] [Modules] [Engines] [Tools] tabs. Window/fonts/loop are in main.cpp.
+// MealKit Manager screen: a left navigation with the Projects, Modules, Engines and Tools pages. Window/fonts/loop are in main.cpp.
 #include "Catalog.h"
 #include "Job.h"
 
+#include <map>
 #include <mutex>
 #include <string>
 
 struct SDL_Window;
+struct SDL_Renderer;
+struct SDL_Texture;
 
 namespace mkmanager {
 
@@ -26,11 +29,19 @@ inline constexpr const char* kIconFolder = "\xEE\xA2\xB7";     // U+E8B7
 inline constexpr const char* kIconRefresh = "\xEE\x9C\xAC";    // U+E72C
 inline constexpr const char* kIconStar = "\xEE\x9C\xB4";       // U+E734
 inline constexpr const char* kIconStarFilled = "\xEE\x9C\xB5"; // U+E735
+inline constexpr const char* kIconMore = "\xEE\x9C\x92";     // U+E712
+inline constexpr const char* kIconSearch = "\xEE\x9C\xA1";   // U+E721
+inline constexpr const char* kIconProjects = "\xEE\xA3\xB1"; // U+E8F1 Library
+inline constexpr const char* kIconModules = "\xEE\xAA\x86";  // U+EA86 Puzzle
+inline constexpr const char* kIconEngines = "\xEE\x9F\xBC";  // U+E7FC Game
+inline constexpr const char* kIconTools = "\xEE\xB1\xBA";    // U+EC7A DeveloperTools
 
 class App {
 public:
     bool iconFont = false; // module icons can be drawn (loadFonts merged an icon font)
     SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr; // project icons are textures on it
+    ~App();
     bool quitRequested = false; // after an update started the new Manager
 
     void init(const std::string& extraEngine);
@@ -47,6 +58,16 @@ public:
     void showToolsTab() { m_openToolsTab = true; }
 
 private:
+    enum class Page { Projects, Modules, Engines, Tools };
+    Page m_page = Page::Projects;
+    void navigation();
+    // icon + label button of an occasional screen (TOOL_DESIGN section 1); primary = the page's one accent-filled button
+    bool actionButton(const char* glyph, const std::string& label, bool primary = false, const char* tooltip = nullptr);
+    void pageTitle(const char* title);
+    // Project icons (mealkit.project "icon", default icon.png), loaded once per folder; null = draw the letter tile
+    std::map<std::string, SDL_Texture*> m_icons;
+    SDL_Texture* projectIcon(const Project& p);
+    void projectTile(const Project& p, float size);
     bool m_openEnginesTab = false;
     bool m_openToolsTab = false;
     void reload();

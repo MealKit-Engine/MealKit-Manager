@@ -8,6 +8,7 @@
 //   MealKitManager --uninstall [--yes]                                 remove the installed Manager, its shortcuts and its Installed apps entry
 //   MealKitManager --version
 #include "App.h"
+#include "Theme.h"
 #include "Strings.h"
 
 #include <mkcontract/Files.h>
@@ -42,9 +43,10 @@ namespace {
 void applyEditorStyle(float scale) {
     ImGui::StyleColorsDark();
     ImGuiStyle& s = ImGui::GetStyle();
-    s.WindowRounding = 6.0f;
-    s.ChildRounding = 4.0f;
-    s.PopupRounding = 6.0f;
+    // Spacing of an occasional screen (TOOL_DESIGN 3.1): 4 px grid, 32 px controls, 8 px rounding for panels and popups
+    s.WindowRounding = 8.0f;
+    s.ChildRounding = 8.0f;
+    s.PopupRounding = 8.0f;
     s.FrameRounding = 4.0f;
     s.GrabRounding = 3.0f;
     s.TabRounding = 4.0f;
@@ -55,127 +57,137 @@ void applyEditorStyle(float scale) {
     s.PopupBorderSize = 1.0f;
     s.TabBarBorderSize = 0.0f;
     s.TabBarOverlineSize = 0.0f;
-    s.WindowPadding = ImVec2(10.0f, 10.0f);
-    s.FramePadding = ImVec2(7.0f, 4.0f);
-    s.ItemSpacing = ImVec2(8.0f, 6.0f);
-    s.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
-    s.CellPadding = ImVec2(6.0f, 3.0f);
+    s.WindowPadding = ImVec2(16.0f, 16.0f);
+    s.FramePadding = ImVec2(12.0f, 8.0f);
+    s.ItemSpacing = ImVec2(8.0f, 8.0f);
+    s.ItemInnerSpacing = ImVec2(8.0f, 4.0f);
+    s.CellPadding = ImVec2(8.0f, 6.0f);
     s.IndentSpacing = 16.0f;
+    // Tokens of engine docs/TOOL_DESIGN.md 3.1: Radix slateDark (gray 1..12) and blueDark. Pick a step by its job, never a color by eye
+    const auto rgb = [](unsigned v, float a = 1.0f) {
+        return ImVec4(((v >> 16) & 0xFF) / 255.0f, ((v >> 8) & 0xFF) / 255.0f, (v & 0xFF) / 255.0f, a);
+    };
+    const auto gray = [&](int step) {
+        static constexpr unsigned kSlate[13] = {0, 0x111113, 0x18191B, 0x212225, 0x272A2D, 0x2E3135, 0x363A3F,
+                                           0x43484E, 0x5A6169, 0x696E77, 0x777B84, 0xB0B4BA, 0xEDEEF0};
+        return rgb(kSlate[step]);
+    };
     const ImVec4 clear(0.0f, 0.0f, 0.0f, 0.0f);
-    const ImVec4 gutter(0.075f, 0.078f, 0.086f, 1.00f); // behind the panels: tab strip, status bar, gaps
-    const ImVec4 panel(0.118f, 0.122f, 0.133f, 1.00f);
-    const auto white = [](float alpha) { return ImVec4(1.0f, 1.0f, 1.0f, alpha); };
-    const auto accent = [](float alpha) { return ImVec4(0.36f, 0.56f, 0.86f, alpha); };
+    const ImVec4 blue8 = rgb(0x2870BD); // focus, selection
+    const ImVec4 blue9 = rgb(0x0090FF); // primary button, check marks
     ImVec4* c = s.Colors;
-    c[ImGuiCol_Text] = ImVec4(0.88f, 0.89f, 0.91f, 1.00f);
-    c[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.52f, 0.56f, 1.00f);
-    c[ImGuiCol_TextSelectedBg] = accent(0.35f);
-    c[ImGuiCol_WindowBg] = gutter; // App draws each tab's content on a panel-colored child
-    c[ImGuiCol_ChildBg] = panel;
-    c[ImGuiCol_PopupBg] = ImVec4(0.135f, 0.14f, 0.153f, 0.99f);
-    c[ImGuiCol_Border] = white(0.06f);
+    c[ImGuiCol_Text] = gray(12);
+    c[ImGuiCol_TextDisabled] = gray(11); // secondary text: paths, dates, hints
+    c[ImGuiCol_TextSelectedBg] = rgb(0x2870BD, 0.45f);
+    c[ImGuiCol_WindowBg] = gray(1); // App draws each page on a panel-colored child
+    c[ImGuiCol_ChildBg] = gray(2);
+    c[ImGuiCol_PopupBg] = gray(3);
+    c[ImGuiCol_Border] = gray(6);
     c[ImGuiCol_BorderShadow] = clear;
-    c[ImGuiCol_MenuBarBg] = gutter;
-    c[ImGuiCol_TitleBg] = gutter;
-    c[ImGuiCol_TitleBgActive] = gutter;
-    c[ImGuiCol_TitleBgCollapsed] = gutter;
-    c[ImGuiCol_FrameBg] = ImVec4(0.165f, 0.17f, 0.185f, 1.00f);
-    c[ImGuiCol_FrameBgHovered] = ImVec4(0.20f, 0.207f, 0.225f, 1.00f);
-    c[ImGuiCol_FrameBgActive] = ImVec4(0.235f, 0.243f, 0.265f, 1.00f);
-    c[ImGuiCol_Header] = ImVec4(0.20f, 0.31f, 0.47f, 1.00f);
-    c[ImGuiCol_HeaderHovered] = white(0.06f);
-    c[ImGuiCol_HeaderActive] = accent(0.55f);
-    c[ImGuiCol_Button] = ImVec4(0.165f, 0.17f, 0.185f, 1.00f);
-    c[ImGuiCol_ButtonHovered] = ImVec4(0.235f, 0.243f, 0.265f, 1.00f);
-    c[ImGuiCol_ButtonActive] = ImVec4(0.29f, 0.30f, 0.325f, 1.00f);
-    c[ImGuiCol_CheckMark] = ImVec4(0.62f, 0.76f, 0.98f, 1.00f);
-    c[ImGuiCol_SliderGrab] = ImVec4(0.42f, 0.44f, 0.48f, 1.00f);
-    c[ImGuiCol_SliderGrabActive] = accent(1.0f);
-    c[ImGuiCol_Separator] = white(0.07f);
-    c[ImGuiCol_SeparatorHovered] = accent(0.55f);
-    c[ImGuiCol_SeparatorActive] = accent(0.90f);
+    c[ImGuiCol_MenuBarBg] = gray(1);
+    c[ImGuiCol_TitleBg] = gray(1);
+    c[ImGuiCol_TitleBgActive] = gray(1);
+    c[ImGuiCol_TitleBgCollapsed] = gray(1);
+    // Hover is one neutral step up, pressed and selected one more; the accent never fills a hovered control
+    c[ImGuiCol_FrameBg] = gray(3);
+    c[ImGuiCol_FrameBgHovered] = gray(4);
+    c[ImGuiCol_FrameBgActive] = gray(5);
+    c[ImGuiCol_Header] = gray(5);
+    c[ImGuiCol_HeaderHovered] = gray(4);
+    c[ImGuiCol_HeaderActive] = gray(6);
+    c[ImGuiCol_Button] = gray(3);
+    c[ImGuiCol_ButtonHovered] = gray(4);
+    c[ImGuiCol_ButtonActive] = gray(5);
+    c[ImGuiCol_CheckMark] = blue9;
+    c[ImGuiCol_SliderGrab] = gray(8);
+    c[ImGuiCol_SliderGrabActive] = blue9;
+    c[ImGuiCol_Separator] = gray(6);
+    c[ImGuiCol_SeparatorHovered] = blue8;
+    c[ImGuiCol_SeparatorActive] = blue9;
     c[ImGuiCol_ResizeGrip] = clear;
-    c[ImGuiCol_ResizeGripHovered] = accent(0.40f);
-    c[ImGuiCol_ResizeGripActive] = accent(0.80f);
+    c[ImGuiCol_ResizeGripHovered] = blue8;
+    c[ImGuiCol_ResizeGripActive] = blue9;
     c[ImGuiCol_ScrollbarBg] = clear;
-    c[ImGuiCol_ScrollbarGrab] = white(0.13f);
-    c[ImGuiCol_ScrollbarGrabHovered] = white(0.22f);
-    c[ImGuiCol_ScrollbarGrabActive] = white(0.30f);
+    c[ImGuiCol_ScrollbarGrab] = gray(6);
+    c[ImGuiCol_ScrollbarGrabHovered] = gray(7);
+    c[ImGuiCol_ScrollbarGrabActive] = gray(8);
     // The selected tab joins its panel; the others sit on the strip
     c[ImGuiCol_Tab] = clear;
-    c[ImGuiCol_TabHovered] = white(0.07f);
-    c[ImGuiCol_TabSelected] = panel;
+    c[ImGuiCol_TabHovered] = gray(4);
+    c[ImGuiCol_TabSelected] = gray(2);
     c[ImGuiCol_TabSelectedOverline] = clear;
     c[ImGuiCol_TabDimmed] = clear;
-    c[ImGuiCol_TabDimmedSelected] = panel;
+    c[ImGuiCol_TabDimmedSelected] = gray(2);
     c[ImGuiCol_TabDimmedSelectedOverline] = clear;
-    c[ImGuiCol_TableHeaderBg] = white(0.04f);
-    c[ImGuiCol_TableBorderStrong] = white(0.07f);
-    c[ImGuiCol_TableBorderLight] = white(0.05f);
-    c[ImGuiCol_TableRowBgAlt] = white(0.02f);
-    c[ImGuiCol_NavCursor] = accent(0.90f);
+    c[ImGuiCol_TableHeaderBg] = gray(3);
+    c[ImGuiCol_TableBorderStrong] = gray(6);
+    c[ImGuiCol_TableBorderLight] = gray(5);
+    c[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.015f);
+    c[ImGuiCol_NavCursor] = blue8;
     s.ScaleAllSizes(scale);
     s.FontScaleDpi = scale;
 }
 
-// Dark title bar in the editor's caption color (editor kEditorCaptionColor 0x131416, the gutter color). Ignored where Windows doesn't support it
+// Dark title bar in the editor's caption color (editor kEditorCaptionColor 0x111113, gray 1 = the gutter). Ignored where Windows doesn't support it
 void applyEditorCaption(SDL_Window* window) {
 #if defined(_WIN32)
     HWND hwnd = static_cast<HWND>(SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
     if (!hwnd) return;
     const BOOL dark = TRUE;
     DwmSetWindowAttribute(hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &dark, sizeof(dark));
-    const COLORREF caption = RGB(0x13, 0x14, 0x16);
+    const COLORREF caption = RGB(0x11, 0x11, 0x13);
     DwmSetWindowAttribute(hwnd, 35 /* DWMWA_CAPTION_COLOR */, &caption, sizeof(caption));
 #else
     (void)window;
 #endif
 }
 
-// Merges a system font + a Korean font (ImGui's default vector font if none)
-// Returns whether an icon font (module icons) was merged in
-bool loadFonts(float size) {
+// One weight: a system font + a Korean font + the icon font merged (ImGui's default vector font if none).
+// Returns the font, or null when the latin file is missing; iconFont tells whether icons were merged
+ImFont* loadFontWeight(float size, const char* latinPath, const char* koreanPath, bool& iconFont) {
     ImGuiIO& io = ImGui::GetIO();
-    const char* latin[] = {
-#if defined(_WIN32)
-        "C:\\Windows\\Fonts\\segoeui.ttf",
-#elif defined(__APPLE__)
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-#else
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-#endif
-    };
-    const char* korean[] = {
-#if defined(_WIN32)
-        "C:\\Windows\\Fonts\\malgun.ttf",
-#elif defined(__APPLE__)
-        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
-#else
-        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-#endif
-    };
-    bool loaded = false;
-    for (const char* path : latin)
-        if (!loaded && SDL_GetPathInfo(path, nullptr) && io.Fonts->AddFontFromFileTTF(path, size)) loaded = true;
-    if (!loaded) {
-        ImFontConfig config;
-        config.SizePixels = size;
-        io.Fonts->AddFontDefaultVector(&config);
-    }
+    if (!SDL_GetPathInfo(latinPath, nullptr)) return nullptr;
+    ImFont* font = io.Fonts->AddFontFromFileTTF(latinPath, size);
+    if (!font) return nullptr;
     ImFontConfig merge;
     merge.MergeMode = true;
-    for (const char* path : korean)
-        if (SDL_GetPathInfo(path, nullptr) && io.Fonts->AddFontFromFileTTF(path, size, &merge)) break;
+    if (SDL_GetPathInfo(koreanPath, nullptr)) io.Fonts->AddFontFromFileTTF(koreanPath, size, &merge);
+    iconFont = false;
 #if defined(_WIN32)
-    // Module icons (App::moduleGlyph): Segoe Fluent Icons on Windows 11, Segoe MDL2 Assets on 10, the same code points as the editor
+    // Icons: Segoe Fluent Icons on Windows 11, Segoe MDL2 Assets on 10, the same code points as the editor
     for (const char* path : {"C:\\Windows\\Fonts\\SegoeIcons.ttf", "C:\\Windows\\Fonts\\segmdl2.ttf"}) {
         ImFontConfig icons;
         icons.MergeMode = true;
         icons.GlyphOffset = ImVec2(0.0f, 3.0f);
-        if (SDL_GetPathInfo(path, nullptr) && io.Fonts->AddFontFromFileTTF(path, size, &icons)) return true;
+        if (SDL_GetPathInfo(path, nullptr) && io.Fonts->AddFontFromFileTTF(path, size, &icons)) {
+            iconFont = true;
+            break;
+        }
     }
 #endif
-    return false;
+    return font;
+}
+
+// Regular and semibold (TOOL_DESIGN 3.1 ramp; sizes are picked per PushFont). Returns whether icons were merged
+bool loadFonts(float size) {
+    mkmanager::theme::Fonts& f = mkmanager::theme::fonts();
+    bool icons = false;
+#if defined(_WIN32)
+    f.regular = loadFontWeight(size, "C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\malgun.ttf", icons);
+    bool strongIcons = false;
+    f.semibold = loadFontWeight(size, "C:\\Windows\\Fonts\\seguisb.ttf", "C:\\Windows\\Fonts\\malgunbd.ttf", strongIcons);
+#elif defined(__APPLE__)
+    f.regular = loadFontWeight(size, "/System/Library/Fonts/Supplemental/Arial.ttf", "/System/Library/Fonts/AppleSDGothicNeo.ttc", icons);
+#else
+    f.regular = loadFontWeight(size, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/nanum/NanumGothic.ttf", icons);
+#endif
+    if (!f.regular) {
+        ImFontConfig config;
+        config.SizePixels = size;
+        f.regular = ImGui::GetIO().Fonts->AddFontDefaultVector(&config);
+    }
+    if (!f.semibold) f.semibold = f.regular;
+    return icons;
 }
 
 int printList(const mkmanager::Catalog& catalog) {
@@ -480,13 +492,14 @@ int main(int argc, char** argv) {
     io.IniFilename = nullptr; // a single window, so there's no layout to save
     applyEditorStyle(scale);
     applyEditorCaption(window);
-    const bool iconFont = loadFonts(16.0f); // the editor's size
+    const bool iconFont = loadFonts(mkmanager::theme::kBody);
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
 
     mkmanager::App app;
     app.window = window;
     app.iconFont = iconFont;
+    app.renderer = renderer;
     app.init(engine);
     if (!language.empty()) mkmanager::setLanguage(language);
     if (!modules.empty()) app.showModulesTab(modules);
@@ -514,7 +527,7 @@ int main(int argc, char** argv) {
         ImGui::Render();
 
         SDL_SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
-        SDL_SetRenderDrawColorFloat(renderer, 0.08f, 0.08f, 0.09f, 1.0f);
+        SDL_SetRenderDrawColorFloat(renderer, 0x11 / 255.0f, 0x11 / 255.0f, 0x13 / 255.0f, 1.0f); // gray 1
         SDL_RenderClear(renderer);
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
         if (frames > 0 && ++frame >= frames) {

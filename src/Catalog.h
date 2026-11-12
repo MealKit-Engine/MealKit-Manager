@@ -22,6 +22,7 @@ struct Project {
     std::string engine;        // engine line of mealkit.project (blank if absent: the engine repo itself or a sample inside it)
     std::string engineVersion; // engine version that created or upgraded the project
     std::string created;
+    std::string icon;          // mealkit.project "icon" (relative path; blank = icon.png)
     bool valid = false;        // the folder has mealkit.project with a name
     bool favorite = false;
 };

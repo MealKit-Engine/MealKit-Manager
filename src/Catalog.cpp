@@ -188,6 +188,7 @@ bool readProject(const std::string& directory, Project& out) {
     out.engine = readKey(file, "engine");
     out.engineVersion = readKey(file, "engineVersion");
     out.created = readKey(file, "created");
+    out.icon = readKey(file, "icon"); // blank: icon.png
     out.valid = !out.name.empty();
     return out.valid;
 }

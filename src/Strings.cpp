@@ -14,6 +14,14 @@ struct Pair {
 
 // When new text is shown on screen, add its Korean here (tests/CatalogTests.cpp checks that all tr text in App.cpp exists)
 constexpr Pair kKorean[] = {
+    {"Recent", "최근"},
+    {"More", "더 보기"},
+    {"Sort (favorites stay on top)", "정렬 (즐겨찾기는 늘 위)"},
+    {"Add a folder that has mealkit.project to the list.", "mealkit.project가 있는 폴더를 목록에 더해요."},
+    {"Made with an older engine: brings it to this one.", "예전 엔진으로 만든 프로젝트예요. 이 엔진에 맞게 올려요."},
+    {"Engine %s not installed", "엔진 %s 설치 필요"},
+    {"Upgrade %s -> %s", "업그레이드 %s -> %s"},
+    {"Engine %s", "엔진 %s"},
     {"Projects", "프로젝트"},
     {"Engines", "엔진"},
     {"Tools", "도구"},

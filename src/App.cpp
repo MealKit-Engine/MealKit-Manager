@@ -1,6 +1,7 @@
 #include "App.h"
 
 #include "Strings.h"
+#include "Theme.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -117,7 +118,7 @@ void App::frame() {
 // No C++ compiler: game code (the game DLL) can't be built here. Shown on the [Projects] and [Engines] tabs
 void App::toolchainBanner() {
     if (!m_toolchain.checked || m_toolchain.compiler) return;
-    const ImVec4 warn(1.0f, 0.75f, 0.35f, 1.0f);
+    const ImVec4 warn = theme::warning();
     ImGui::TextColored(warn, "%s", tr("No C++ compiler on this PC: game code can't be built, so projects can't open in the editor."));
     ImGui::TextUnformatted(tr("Install Visual Studio Build Tools with C++ (about 6 GB), from a terminal:"));
     static char line[256];
@@ -171,7 +172,17 @@ void App::finishJob() {
     reload();
 }
 
+App::~App() {
+    for (auto& [folder, texture] : m_icons)
+        if (texture) SDL_DestroyTexture(texture);
+}
+
 void App::drawWindow() {
+    if (m_openModulesTab) m_page = Page::Modules;
+    if (m_openEnginesTab) m_page = Page::Engines;
+    if (m_openToolsTab) m_page = Page::Tools;
+    m_openModulesTab = m_openEnginesTab = m_openToolsTab = false;
+
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -179,33 +190,120 @@ void App::drawWindow() {
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                      ImGuiWindowFlags_NoBringToFrontOnFocus);
     const float statusHeight = ImGui::GetFrameHeightWithSpacing();
-    // Editor layout: the tab strip and status bar sit on the gutter (WindowBg), each tab's content on a panel (ChildBg) that the selected tab joins
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-    ImGui::BeginChild("##body", ImVec2(0, -statusHeight));
-    ImGui::PopStyleColor();
-    auto tab = [this](const char* label, bool select, void (App::*draw)()) {
-        if (!ImGui::BeginTabItem(label, nullptr, select ? ImGuiTabItemFlags_SetSelected : 0)) return;
-        ImGui::PushStyleVar(ImGuiStyleVar_TabBarBorderSize, 0.0f);
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetStyle().ItemSpacing.y); // touch the tab strip
-        if (ImGui::BeginChild("##panel", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding)) (this->*draw)();
-        ImGui::EndChild();
-        ImGui::PopStyleVar();
-        ImGui::EndTabItem();
-    };
-    if (ImGui::BeginTabBar("##tabs")) {
-        tab(tr("Projects"), false, &App::projectsTab);
-        tab(tr("Modules"), m_openModulesTab, &App::modulesTab);
-        m_openModulesTab = false;
-        tab(tr("Engines"), m_openEnginesTab, &App::enginesTab);
-        m_openEnginesTab = false;
-        tab(tr("Tools"), m_openToolsTab, &App::toolsTab);
-        m_openToolsTab = false;
-        ImGui::EndTabBar();
+    // Navigation and status bar on the gutter (WindowBg), the page on a panel (ChildBg), like the editor's panels
+    navigation();
+    ImGui::SameLine();
+    if (ImGui::BeginChild("##page", ImVec2(0, -statusHeight), ImGuiChildFlags_AlwaysUseWindowPadding)) {
+        switch (m_page) {
+        case Page::Projects: projectsTab(); break;
+        case Page::Modules: modulesTab(); break;
+        case Page::Engines: enginesTab(); break;
+        case Page::Tools: toolsTab(); break;
+        }
     }
     ImGui::EndChild();
     statusBar();
     newProjectPopup();
     ImGui::End();
+}
+
+// Left navigation (Discord / Claude Desktop style): icon + label rows on the gutter, the current page gray 5 with a blue bar
+void App::navigation() {
+    const float width = 190.0f * ImGui::GetStyle().FontScaleDpi;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+    ImGui::BeginChild("##nav", ImVec2(width, -ImGui::GetFrameHeightWithSpacing()));
+    ImGui::PopStyleColor();
+    struct Item {
+        Page page;
+        const char* glyph;
+        const char* label;
+    };
+    const Item items[] = {{Page::Projects, kIconProjects, tr("Projects")},
+                          {Page::Modules, kIconModules, tr("Modules")},
+                          {Page::Engines, kIconEngines, tr("Engines")},
+                          {Page::Tools, kIconTools, tr("Tools")}};
+    const float rowHeight = ImGui::GetFrameHeight() + 4.0f * ImGui::GetStyle().FontScaleDpi;
+    ImGui::Dummy(ImVec2(0, 4.0f));
+    for (const Item& item : items) {
+        const bool current = m_page == item.page;
+        ImGui::PushID(item.label);
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        theme::FontScope font(theme::kBody, current);
+        ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.0f, 0.5f));
+        ImGui::PushStyleColor(ImGuiCol_Header, theme::gray(5));
+        if (ImGui::Selectable(("    " + iconLabel(item.glyph, item.label)).c_str(), current, 0, ImVec2(0, rowHeight))) m_page = item.page;
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
+        if (current) {
+            const float bar = 3.0f * ImGui::GetStyle().FontScaleDpi;
+            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(pos.x, pos.y + rowHeight * 0.25f), ImVec2(pos.x + bar, pos.y + rowHeight * 0.75f),
+                                                      ImGui::GetColorU32(theme::blue9()), bar);
+        }
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+}
+
+void App::pageTitle(const char* title) {
+    theme::FontScope font(theme::kTitle, true);
+    ImGui::TextUnformatted(title);
+}
+
+bool App::actionButton(const char* glyph, const std::string& label, bool primary, const char* tooltip) {
+    if (primary) {
+        ImGui::PushStyleColor(ImGuiCol_Button, theme::blue9());
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme::blue10());
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, theme::blue8());
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
+    }
+    bool pressed;
+    {
+        theme::FontScope font(theme::kBody, true);
+        pressed = ImGui::Button((iconLabel(glyph, label.c_str()) + "##" + label).c_str());
+    }
+    if (primary) ImGui::PopStyleColor(4);
+    if (tooltip) ImGui::SetItemTooltip("%s", tooltip);
+    return pressed;
+}
+
+SDL_Texture* App::projectIcon(const Project& p) {
+    auto found = m_icons.find(p.directory);
+    if (found != m_icons.end()) return found->second;
+    SDL_Texture* texture = nullptr;
+    if (renderer && p.valid) {
+        std::string icon = p.icon.empty() ? std::string("icon.png") : p.icon;
+        std::replace(icon.begin(), icon.end(), '/', '\\');
+        if (SDL_Surface* surface = SDL_LoadPNG((p.directory + "\\" + icon).c_str())) {
+            texture = SDL_CreateTextureFromSurface(renderer, surface);
+            if (texture) SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+            SDL_DestroySurface(surface);
+        }
+    }
+    m_icons[p.directory] = texture;
+    return texture;
+}
+
+// The project's icon, or a rounded tile with its first letter (the suite icon family: one mark on a colored square)
+void App::projectTile(const Project& p, float size) {
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const float rounding = 8.0f * ImGui::GetStyle().FontScaleDpi;
+    if (SDL_Texture* texture = projectIcon(p)) {
+        draw->AddImageRounded(ImTextureRef(reinterpret_cast<ImTextureID>(texture)), pos, ImVec2(pos.x + size, pos.y + size), ImVec2(0, 0), ImVec2(1, 1),
+                              IM_COL32_WHITE, rounding);
+    } else {
+        static constexpr unsigned kTiles[] = {0x0090FF, 0x30A46C, 0xE5484D, 0x8E4EC6, 0xF76B15, 0x12A594};
+        unsigned hash = 0;
+        for (char ch : p.name) hash = hash * 31 + static_cast<unsigned char>(ch);
+        const ImVec4 tile = p.valid ? theme::rgb(kTiles[hash % 6]) : theme::gray(5);
+        draw->AddRectFilled(pos, ImVec2(pos.x + size, pos.y + size), ImGui::GetColorU32(tile), rounding);
+        std::string letter = p.name.empty() ? std::string("?") : p.name.substr(0, 1);
+        if (!letter.empty()) letter[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(letter[0])));
+        theme::FontScope font(theme::kSubtitle, true);
+        const ImVec2 text = ImGui::CalcTextSize(letter.c_str());
+        draw->AddText(ImVec2(pos.x + (size - text.x) * 0.5f, pos.y + (size - text.y) * 0.5f), IM_COL32_WHITE, letter.c_str());
+    }
+    ImGui::Dummy(ImVec2(size, size));
 }
 
 const Project* App::selectedProject() const {
@@ -297,20 +395,24 @@ void App::projectsTab() {
     int missing = 0;
     for (const Project& p : projects) missing += p.valid ? 0 : 1;
 
+    // Title, then the page's actions on the right (TOOL_DESIGN section 1: icon + label; the one primary button is [Open in Editor] below)
+    pageTitle(tr("Projects"));
+    {
+        const ImGuiStyle& style = ImGui::GetStyle();
+        theme::FontScope font(theme::kBody, true);
+        const float w = ImGui::CalcTextSize(iconLabel(kIconAdd, tr("New Project")).c_str()).x + ImGui::CalcTextSize(importLabel.c_str()).x +
+                        ImGui::GetFrameHeight() + style.FramePadding.x * 4 + style.ItemSpacing.x * 2;
+        ImGui::SameLine(ImGui::GetContentRegionMax().x - w);
+    }
     ImGui::BeginDisabled(busy);
-    if (iconButton(kIconAdd, tr("New Project"))) m_openNew = true;
+    if (actionButton(kIconFolder, tr("Import..."), false, tr("Add a folder that has mealkit.project to the list."))) pickFolder(0);
     ImGui::SameLine();
-    if (iconButton(kIconFolder, tr("Import..."))) pickFolder(0);
+    if (actionButton(kIconAdd, tr("New Project"))) m_openNew = true;
     ImGui::EndDisabled();
     ImGui::SameLine();
     if (iconButton(kIconRefresh, tr("Refresh"))) reload();
-    if (missing > 0) {
-        ImGui::SameLine();
-        if (iconButton(kIconRemove, trf("Remove Missing (%d)", missing), false,
-                       tr("Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted)."), std::to_string(missing)))
-            removeMissingProjects();
-    }
-    ImGui::SameLine();
+    ImGui::Dummy(ImVec2(0, 4.0f));
+
     if (m_focusSearch || (!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_F))) {
         ImGui::SetKeyboardFocusHere();
         m_focusSearch = false;
@@ -320,13 +422,38 @@ void App::projectsTab() {
     char countText[32] = {};
     if (m_search[0]) std::snprintf(countText, sizeof(countText), "%d / %d", shown, static_cast<int>(projects.size()));
     const std::string count = countText;
-    const float countWidth = count.empty() ? 0.0f : ImGui::CalcTextSize(count.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - countWidth);
-    ImGui::InputTextWithHint("##search", tr("Search (Ctrl+F)"), m_search, sizeof(m_search), ImGuiInputTextFlags_EscapeClearsAll);
+    const char* sorts[] = {tr("Recent"), tr("Name"), tr("Engine"), tr("Created")};
+    const int sortIndex = m_sortColumn < 0 ? 0 : m_sortColumn;
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float sortWidth = 0.0f;
+    for (const char* label : sorts) sortWidth = std::max(sortWidth, ImGui::CalcTextSize(label).x);
+    sortWidth += ImGui::GetFrameHeight() + style.FramePadding.x * 2;
+    const std::string removeMissing = trf("Remove Missing (%d)", missing);
+    const float missingWidth = missing > 0 ? ImGui::CalcTextSize(removeMissing.c_str()).x + style.FramePadding.x * 2 + style.ItemSpacing.x : 0.0f;
+    const float countWidth = count.empty() ? 0.0f : ImGui::CalcTextSize(count.c_str()).x + style.ItemSpacing.x;
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - countWidth - sortWidth - missingWidth - style.ItemSpacing.x);
+    ImGui::InputTextWithHint("##search", iconLabel(kIconSearch, tr("Search (Ctrl+F)")).c_str(), m_search, sizeof(m_search), ImGuiInputTextFlags_EscapeClearsAll);
     if (!count.empty()) {
         ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("%s", count.c_str());
     }
+    if (missing > 0) {
+        ImGui::SameLine();
+        if (ImGui::Button(removeMissing.c_str())) removeMissingProjects();
+        ImGui::SetItemTooltip("%s", tr("Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted)."));
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(sortWidth);
+    if (ImGui::BeginCombo("##sort", sorts[sortIndex])) {
+        for (int i = 0; i < 4; ++i)
+            if (ImGui::Selectable(sorts[i], i == sortIndex)) {
+                m_sortColumn = i == 0 ? -1 : i;
+                m_sortAscending = i != 3; // newest first for the date
+            }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("%s", tr("Sort (favorites stay on top)"));
 
     projectList(busy);
 
@@ -353,41 +480,34 @@ void App::projectsTab() {
             }
     }
 
-    // Actions for the selected project, named so it's clear what they act on
+    // Actions for the selected project; [Open in Editor] is the page's primary button
     const Project* selected = selectedProject();
-    if (selected && selected->valid) {
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(selected->name.c_str());
-        ImGui::SameLine();
-    }
     ImGui::BeginDisabled(!selected || busy);
     const Release* missingEngine = selected && !m_catalog.engineFor(*selected) ? Catalog::releaseFor(*selected, m_releases) : nullptr;
     if (missingEngine) {
         // The project's engine isn't on this PC but the release index has its MINOR: install it, then [Open in Editor] finds it by version
-        if (iconButton(kIconDownload, trf("Install Engine %s", missingEngine->version.c_str()), false, nullptr, missingEngine->version)) installEngine(*missingEngine);
+        if (actionButton(kIconDownload, trf("Install Engine %s", missingEngine->version.c_str()), true)) installEngine(*missingEngine);
     } else {
         ImGui::BeginDisabled(selected && !selected->valid);
-        if (iconButton(kIconLaunch, tr("Open in Editor"), false, "Enter") && selected) openProject(*selected);
+        if (actionButton(kIconLaunch, tr("Open in Editor"), true, "Enter") && selected) openProject(*selected);
         ImGui::EndDisabled();
     }
-    ImGui::SameLine();
     const bool upgrade = selected && m_catalog.needsUpgrade(*selected);
-    ImGui::BeginDisabled(!upgrade);
-    if (iconButton(kIconUp, tr("Upgrade Project")) && upgrade) {
-        const Engine* engine = m_catalog.engineFor(*selected);
-        runScript(tr("Upgrade"), pathJoin(engine->directory, "tools\\upgrade_project.ps1"), {"-Project", selected->directory});
+    if (upgrade) {
+        ImGui::SameLine();
+        if (actionButton(kIconUp, tr("Upgrade Project"), false, tr("Made with an older engine: brings it to this one."))) {
+            const Engine* engine = m_catalog.engineFor(*selected);
+            runScript(tr("Upgrade"), pathJoin(engine->directory, "tools\\upgrade_project.ps1"), {"-Project", selected->directory});
+        }
     }
+    ImGui::SameLine();
+    if (actionButton(kIconFolderOpen, tr("Show Folder")) && selected) SDL_OpenURL(("file:///" + selected->directory).c_str());
     ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (iconButton(kIconFolderOpen, tr("Show Folder")) && selected) SDL_OpenURL(("file:///" + selected->directory).c_str());
-    ImGui::SameLine();
-    if (iconButton(kIconRemove, tr("Remove from List"), false, "Del") && selected) {
-        m_catalog.removeRecent(selected->directory);
-        m_status = trf("Removed %s from the list (the folder is kept)", selected->directory.c_str());
-        m_statusError = false;
-        reload();
+    if (selected) {
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", selected->valid ? selected->name.c_str() : selected->directory.c_str());
     }
-    ImGui::EndDisabled();
 }
 
 namespace {
@@ -399,26 +519,10 @@ bool lessNoCase(const std::string& a, const std::string& b) {
 } // namespace
 
 void App::projectList(bool busy) {
-    // Rows that match the search, in recent order or the order of the clicked column header (favorites stay on top either way)
+    // Rows that match the search, in recent order or the picked sort (favorites stay on top either way)
     std::vector<const Project*> rows;
     for (const Project& p : m_catalog.projects())
         if (containsNoCase(p.name, m_search) || containsNoCase(p.directory, m_search)) rows.push_back(&p);
-
-    const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY |
-                                  ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate;
-    const float actionsHeight = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
-    if (!ImGui::BeginTable("##projects", 4, flags, ImVec2(0, -actionsHeight))) return;
-    ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("##fav", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, ImGui::GetFrameHeight());
-    ImGui::TableSetupColumn(tr("Project"), ImGuiTableColumnFlags_WidthStretch, 2.0f);
-    ImGui::TableSetupColumn(tr("Engine"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
-    ImGui::TableSetupColumn(tr("Created"), ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("0000-00-00 ").x);
-    ImGui::TableHeadersRow();
-    if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs && specs->SpecsDirty) {
-        m_sortColumn = specs->SpecsCount > 0 ? specs->Specs[0].ColumnIndex : -1;
-        m_sortAscending = specs->SpecsCount > 0 && specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending;
-        specs->SpecsDirty = false;
-    }
     if (m_sortColumn > 0) {
         auto engineVersion = [this](const Project* p) {
             const Engine* e = m_catalog.engineFor(*p);
@@ -433,48 +537,64 @@ void App::projectList(bool busy) {
             if (a->favorite != b->favorite) return a->favorite;
             return m_sortAscending ? less(a, b) : less(b, a);
         });
+    } else {
+        std::stable_partition(rows.begin(), rows.end(), [](const Project* p) { return p->favorite; });
     }
 
+    // Two-line rows (TOOL_DESIGN 3.2: only what identifies a project): icon, name, "engine · created"; a state only when it needs attention.
+    // The folder is in the row's tooltip and the More menu
+    const float actionsHeight = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y * 2;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+    const bool open = ImGui::BeginChild("##projects", ImVec2(0, -actionsHeight));
+    ImGui::PopStyleColor();
+    if (!open) {
+        ImGui::EndChild();
+        return;
+    }
     if (rows.empty()) {
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(1);
+        ImGui::Dummy(ImVec2(0, 24.0f));
+        theme::FontScope font(theme::kBodyLarge);
         ImGui::TextDisabled("%s", tr("No projects match the search."));
     }
 
-    const ImVec4 warn(1.0f, 0.8f, 0.3f, 1.0f);
-    const ImVec4 bad(1.0f, 0.45f, 0.4f, 1.0f);
+    const float dpi = ImGui::GetStyle().FontScaleDpi;
+    const float rowHeight = 56.0f * dpi;
+    const float tile = 40.0f * dpi;
+    const float pad = 12.0f * dpi;
     const bool typing = ImGui::GetIO().WantTextInput;
     for (const Project* pp : rows) {
         const Project& p = *pp;
         ImGui::PushID(p.directory.c_str());
-        ImGui::TableNextRow();
-        ImGui::TableNextColumn();
-        // The editor's star glyphs on a flat button, gold when on (★ ☆ without the icon font)
-        const char* star = iconFont ? (p.favorite ? kIconStarFilled : kIconStar) : (p.favorite ? "\xE2\x98\x85" : "\xE2\x98\x86");
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleColor(ImGuiCol_Text, p.favorite ? ImVec4(1.0f, 0.8f, 0.3f, 1.0f) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        const bool starPressed = ImGui::SmallButton((std::string(star) + "##fav").c_str());
-        ImGui::PopStyleColor(2);
-        if (starPressed) {
-            m_pendingFavorite = p.directory;
-            m_pendingFavoriteOn = !p.favorite;
-        }
-        ImGui::SetItemTooltip("%s", tr("Favorite"));
-
-        ImGui::TableNextColumn();
         const bool isSelected = sameDirectory(m_selected, p.directory);
-        // A project whose folder is gone shows its folder name, dimmed, instead of a bare "(missing)"
-        std::string name = p.name;
+        const ImVec2 rowPos = ImGui::GetCursorScreenPos();
+        const float rowWidth = ImGui::GetContentRegionAvail().x;
+        const Engine* engine = p.valid ? m_catalog.engineFor(p) : nullptr;
+
+        // What the row says on its right: a state that needs attention, else nothing
+        std::string state;
+        ImVec4 stateColor = theme::warning();
         if (!p.valid) {
-            const size_t slash = p.directory.find_last_of("\\/");
-            name = slash == std::string::npos ? p.directory : p.directory.substr(slash + 1);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            std::error_code ec;
+            const bool folder = std::filesystem::is_directory(std::filesystem::path(std::u8string(p.directory.begin(), p.directory.end())), ec);
+            state = folder ? tr("no mealkit.project") : tr("folder missing");
+            stateColor = theme::danger();
+        } else if (!engine) {
+            const Release* release = Catalog::releaseFor(p, m_releases);
+            state = release ? trf("Engine %s not installed", release->version.c_str()) : std::string(tr("engine not found"));
+            if (!release) stateColor = theme::danger();
+        } else if (m_catalog.needsUpgrade(p)) {
+            state = trf("Upgrade %s -> %s", p.engineVersion.c_str(), engine->version.c_str());
         }
-        if (ImGui::Selectable((name + "##row").c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick)) {
+
+        ImGui::PushStyleColor(ImGuiCol_Header, theme::gray(5));
+        const bool clicked = ImGui::Selectable("##row", isSelected, ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_AllowOverlap,
+                                               ImVec2(rowWidth, rowHeight));
+        ImGui::PopStyleColor();
+        if (clicked) {
             m_selected = p.directory;
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && p.valid) m_pendingOpen = p.directory;
         }
-        if (!p.valid) ImGui::PopStyleColor();
+        ImGui::SetItemTooltip("%s", p.directory.c_str());
         // Keyboard: the selection follows the arrow keys, Enter opens, Delete takes it off the list
         if (ImGui::IsItemFocused() && !typing) {
             if (ImGui::GetIO().NavVisible && !isSelected) m_selected = p.directory;
@@ -487,35 +607,77 @@ void App::projectList(bool busy) {
             projectMenu(p, busy);
             ImGui::EndPopup();
         }
-        ImGui::TextDisabled("%s", p.directory.c_str());
-        ImGui::SetItemTooltip("%s", p.directory.c_str());
-
-        ImGui::TableNextColumn();
-        if (!p.valid) {
-            std::error_code ec;
-            const bool folder = std::filesystem::is_directory(std::filesystem::path(std::u8string(p.directory.begin(), p.directory.end())), ec);
-            ImGui::TextColored(bad, "%s", folder ? tr("no mealkit.project") : tr("folder missing"));
-        } else {
-            bool byVersion = false;
-            const Engine* engine = m_catalog.engineFor(p, &byVersion);
-            const Release* release = engine ? nullptr : Catalog::releaseFor(p, m_releases);
-            if (!engine && release) ImGui::TextColored(warn, "%s", trf("%s not installed", release->version.c_str()).c_str());
-            else if (!engine) ImGui::TextColored(bad, "%s", tr("engine not found"));
-            else if (byVersion) ImGui::Text("%s%s", engine->version.c_str(), tr(" (installed here)"));
-            else if (m_catalog.needsUpgrade(p)) {
-                ImGui::TextColored(warn, "%s -> %s", p.engineVersion.c_str(), engine->version.c_str());
-                ImGui::SetItemTooltip("%s", tr("Made with an older engine: [Upgrade Project] brings it to this one."));
-            } else ImGui::Text("%s%s", engine->version.c_str(), p.engine.empty() ? tr(" (engine sample)") : "");
+        const bool rowHovered = ImGui::IsMouseHoveringRect(rowPos, ImVec2(rowPos.x + rowWidth, rowPos.y + rowHeight));
+        const ImVec2 after = ImGui::GetCursorScreenPos();
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        if (isSelected) {
+            const float bar = 3.0f * dpi;
+            draw->AddRectFilled(ImVec2(rowPos.x, rowPos.y + rowHeight * 0.2f), ImVec2(rowPos.x + bar, rowPos.y + rowHeight * 0.8f),
+                                ImGui::GetColorU32(theme::blue9()), bar);
         }
 
-        ImGui::TableNextColumn();
-        ImGui::TextDisabled("%s", p.created.c_str());
+        ImGui::SetCursorScreenPos(ImVec2(rowPos.x + pad, rowPos.y + (rowHeight - tile) * 0.5f));
+        projectTile(p, tile);
+
+        // Right side: state, favorite star (shown on hover or when on), More
+        const float button = ImGui::GetFrameHeight();
+        float right = rowPos.x + rowWidth - pad - button;
+        ImGui::SetCursorScreenPos(ImVec2(right, rowPos.y + (rowHeight - button) * 0.5f));
+        if (iconButton(kIconMore, tr("More"))) {
+            m_selected = p.directory;
+            ImGui::OpenPopup("##more");
+        }
+        if (ImGui::BeginPopup("##more")) {
+            projectMenu(p, busy);
+            ImGui::EndPopup();
+        }
+        right -= button + 4.0f * dpi;
+        ImGui::SetCursorScreenPos(ImVec2(right, rowPos.y + (rowHeight - button) * 0.5f));
+        const char* star = iconFont ? (p.favorite ? kIconStarFilled : kIconStar) : (p.favorite ? "\xE2\x98\x85" : "\xE2\x98\x86");
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, p.favorite ? theme::warning() : (rowHovered ? theme::gray(11) : ImVec4(0, 0, 0, 0)));
+        const bool starPressed = ImGui::Button((std::string(star) + "##fav").c_str(), ImVec2(button, button));
+        ImGui::PopStyleColor(2);
+        if (starPressed) {
+            m_pendingFavorite = p.directory;
+            m_pendingFavoriteOn = !p.favorite;
+        }
+        ImGui::SetItemTooltip("%s", tr("Favorite"));
+        if (!state.empty()) {
+            right -= ImGui::CalcTextSize(state.c_str()).x + 12.0f * dpi;
+            draw->AddText(ImVec2(right, rowPos.y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f), ImGui::GetColorU32(stateColor), state.c_str());
+        }
+
+        // Name and the summary line, clipped before the right side so nothing there is pushed out
+        const float textX = rowPos.x + pad + tile + pad;
+        const float textRight = std::max(textX, right - 12.0f * dpi);
+        std::string name = p.name;
+        if (!p.valid) {
+            const size_t slash = p.directory.find_last_of("\\/");
+            name = slash == std::string::npos ? p.directory : p.directory.substr(slash + 1);
+        }
+        std::string summary;
+        if (engine) summary = trf("Engine %s", engine->version.c_str());
+        else if (!p.engineVersion.empty()) summary = trf("Engine %s", p.engineVersion.c_str());
+        if (!p.created.empty()) summary += (summary.empty() ? "" : "  \xC2\xB7  ") + p.created;
+        draw->PushClipRect(ImVec2(textX, rowPos.y), ImVec2(textRight, rowPos.y + rowHeight), true);
+        {
+            theme::FontScope font(theme::kBody, true);
+            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f - ImGui::GetTextLineHeight() - 1.0f * dpi),
+                          ImGui::GetColorU32(p.valid ? theme::gray(12) : theme::gray(11)), name.c_str());
+        }
+        draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f + 1.0f * dpi), ImGui::GetColorU32(theme::gray(11)), summary.c_str());
+        draw->PopClipRect();
+
+        ImGui::SetCursorScreenPos(after);
+        ImGui::Dummy(ImVec2(0, 2.0f * dpi));
         ImGui::PopID();
     }
-    ImGui::EndTable();
+    ImGui::EndChild();
 }
 
 void App::enginesTab() {
+    pageTitle(tr("Engines"));
     toolchainBanner();
     toolchainLine();
     ImGui::BeginDisabled(m_job.running());
@@ -579,7 +741,7 @@ void App::enginesTab() {
         return;
     }
     if (!m_releasesError.empty()) {
-        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("Could not read the release index."));
+        ImGui::TextColored(theme::danger(), "%s", tr("Could not read the release index."));
         ImGui::SameLine();
         if (iconButton(kIconRefresh, tr("Retry"), true)) m_releasesFetched = false;
         ImGui::TextDisabled("%s", m_releasesError.c_str());
@@ -648,6 +810,7 @@ std::string App::withIcon(const std::string& icon, const std::string& tags, cons
 
 // Source modules of the selected project. The rules live in one place, that project's engine tools\module.ps1 (list via search -Tsv, changes via add/update/remove)
 void App::modulesTab() {
+    pageTitle(tr("Modules"));
     const Project* project = nullptr;
     for (const Project& p : m_catalog.projects())
         if (p.valid && sameDirectory(p.directory, m_selected)) project = &p;
@@ -657,7 +820,7 @@ void App::modulesTab() {
     }
     const Engine* engine = m_catalog.engineFor(*project);
     if (!engine || !fileExists(pathJoin(engine->directory, "tools\\module.ps1"))) {
-        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("This project's engine has no module tool (tools\\module.ps1, engine 0.5 or later)."));
+        ImGui::TextColored(theme::danger(), "%s", tr("This project's engine has no module tool (tools\\module.ps1, engine 0.5 or later)."));
         return;
     }
     const bool busy = m_job.running();
@@ -676,7 +839,7 @@ void App::modulesTab() {
     ImGui::SetNextItemWidth(-FLT_MIN);
     ImGui::InputTextWithHint("##modsearch", tr("Search"), m_moduleSearch, sizeof(m_moduleSearch));
 
-    const ImVec4 warn(1.0f, 0.8f, 0.3f, 1.0f);
+    const ImVec4 warn = theme::warning();
     const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp;
     ImGui::SeparatorText(tr("In this project"));
     if (m_modules.installed.empty()) ImGui::TextDisabled("%s", busy ? tr("Reading...") : tr("No modules."));
@@ -718,7 +881,7 @@ void App::modulesTab() {
     }
 
     ImGui::SeparatorText(tr("Registry (MealKit-Modules)"));
-    if (!m_modules.error.empty()) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", m_modules.error.c_str());
+    if (!m_modules.error.empty()) ImGui::TextColored(theme::danger(), "%s", m_modules.error.c_str());
     if (ImGui::BeginTable("##registry", 3, flags | ImGuiTableFlags_ScrollY)) {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn(tr("Module"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
@@ -772,6 +935,7 @@ void App::modulesTab() {
 }
 
 void App::toolsTab() {
+    pageTitle(tr("Tools"));
     ImGui::TextDisabled("%s", tr("Tools are found in %LOCALAPPDATA%\\MealKit\\tools\\<tool>\\ and the editor's toolPath lines."));
     const Project* project = nullptr;
     for (const Project& p : m_catalog.projects())
@@ -797,7 +961,7 @@ void App::toolsTab() {
             ImGui::TextUnformatted(t.name.c_str());
             ImGui::TableNextColumn();
             if (t.protocol != kLiveProtocol)
-                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s %s", t.version.c_str(), tr("(protocol differs)"));
+                ImGui::TextColored(theme::warning(), "%s %s", t.version.c_str(), tr("(protocol differs)"));
             else ImGui::TextUnformatted(t.version.c_str());
             ImGui::TableNextColumn();
             ImGui::TextDisabled("%s", t.folder.c_str());
@@ -875,11 +1039,11 @@ void App::newProjectPopup() {
 
     ImGui::InputText(tr("Name"), m_newName, sizeof(m_newName));
     const bool nameOk = validGameName(m_newName);
-    if (!nameOk) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("Start with a letter; letters, digits and _ only (it becomes the exe name)."));
+    if (!nameOk) ImGui::TextColored(theme::danger(), "%s", tr("Start with a letter; letters, digits and _ only (it becomes the exe name)."));
     ImGui::InputText(tr("Location"), m_newLocation, sizeof(m_newLocation));
     ImGui::SameLine();
     if (iconButton(kIconFolder, tr("Location"))) pickFolder(2);
-    if (engines.empty()) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("No engine found. Add one on the Engines tab."));
+    if (engines.empty()) ImGui::TextColored(theme::danger(), "%s", tr("No engine found. Add one on the Engines tab."));
     else {
         const std::string preview = engines[m_newEngine].version + "  " + engines[m_newEngine].directory;
         if (ImGui::BeginCombo(tr("Engine"), preview.c_str())) {
@@ -956,11 +1120,11 @@ void App::statusBar() {
         ImGui::TextDisabled("MealKit Manager %s  |  %s", MKMANAGER_VERSION, userDirectory().c_str());
         return;
     }
-    if (m_statusError) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", m_status.c_str());
+    if (m_statusError) ImGui::TextColored(theme::danger(), "%s", m_status.c_str());
     else ImGui::TextUnformatted(m_status.c_str());
     if (!m_jobOutput.empty()) {
         ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.4f, 1.0f)); // the failure's output, in the error color
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::danger()); // the failure's output, in the error color
         const bool show = iconButton(kIconOutput, tr("Output"), true);
         ImGui::PopStyleColor();
         if (show) ImGui::OpenPopup("##output");
