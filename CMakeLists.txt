@@ -71,3 +71,7 @@ install(TARGETS MealKitManager RUNTIME DESTINATION .)
 # Engine installer the [Engines] tab runs (beside the exe in the build too, so build\bin works the same)
 configure_file(scripts/install.ps1 ${CMAKE_BINARY_DIR}/bin/install.ps1 COPYONLY)
 install(FILES scripts/install.ps1 DESTINATION .)
+
+if(WIN32)
+    target_sources(MealKitManager PRIVATE res/MealKitManager.rc) # app icon (engine docs/TOOL_DESIGN.md section 5)
+endif()
