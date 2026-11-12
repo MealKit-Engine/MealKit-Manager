@@ -4,6 +4,7 @@
 //   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty]   new project without a window (same script as the screen's [New Project])
 //   MealKitManager --open <project folder>                         opens that project in its engine's editor without a window
 //   MealKitManager --releases | --install-engine <version>             engines in the release index (MEALKIT_RELEASE_INDEX) / install one
+//   (run from a downloaded package, with SETUP beside the exe)          installs itself with shortcuts and starts the installed copy (--no-launch: doesn't start it)
 //   MealKitManager --version
 #include "App.h"
 #include "Strings.h"
@@ -157,6 +158,31 @@ int installCommand(const std::string& version) {
     return 0;
 }
 
+// A downloaded Manager package (scripts\package.ps1) has a SETUP file beside the exe. Run from there, the Manager installs itself into
+// <user folder>\manager with its Start menu and desktop shortcuts (install.ps1 self), starts the installed copy and quits.
+// Returns -1 when this isn't a package run (go on normally), otherwise the exit code.
+int setupFromPackage(bool launch) {
+    const char* base = SDL_GetBasePath();
+    const std::string from = mkcontract::normalizeDirectory(base ? base : "");
+    const std::string to = mkcontract::joinPath(mkmanager::userDirectory(), "manager");
+    if (from.empty() || !SDL_GetPathInfo(mkcontract::joinPath(from, "SETUP").c_str(), nullptr) || mkcontract::sameDirectory(from, to)) return -1;
+    mkmanager::Job job;
+    job.start("setup", mkmanager::powershellArgs(mkcontract::joinPath(from, "install.ps1"), {"self", "-From", from, "-To", to}));
+    while (!job.takeFinished()) SDL_Delay(50);
+    std::printf("%s", job.output().c_str());
+    if (job.exitCode() != 0) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "MealKit Manager", ("Installing MealKit Manager failed.\n\n" + job.output()).c_str(), nullptr);
+        return 1;
+    }
+    if (!launch) return 0;
+    std::string error;
+    if (!mkmanager::launchDetached({mkcontract::joinPath(to, "MealKitManager.exe")}, error)) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "MealKit Manager", ("Cannot start the installed MealKit Manager: " + error).c_str(), nullptr);
+        return 1;
+    }
+    return 0;
+}
+
 // Window placement kept between runs: manager_window.txt in the user folder ("x y w h maximized" keys, Manager only)
 struct Placement {
     int x = 0, y = 0, w = 0, h = 0;
@@ -214,7 +240,7 @@ bool onSomeDisplay(const Placement& p) {
 int main(int argc, char** argv) {
     std::string engine, capture, language, newName, newPath, newTemplate, open, modules;
     long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
-    bool list = false, releases = false, enginesTab = false;
+    bool list = false, releases = false, enginesTab = false, noLaunch = false;
     std::string installVersion;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--engine") == 0 && i + 1 < argc) engine = argv[++i];
@@ -229,6 +255,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--list") == 0) list = true;
         else if (std::strcmp(argv[i], "--releases") == 0) releases = true;
         else if (std::strcmp(argv[i], "--engines") == 0) enginesTab = true;
+        else if (std::strcmp(argv[i], "--no-launch") == 0) noLaunch = true;
         else if (std::strcmp(argv[i], "--install-engine") == 0 && i + 1 < argc) installVersion = argv[++i];
         else if (std::strcmp(argv[i], "--version") == 0) {
             std::printf("MealKit Manager %s\n", MKMANAGER_VERSION);
@@ -236,6 +263,10 @@ int main(int argc, char** argv) {
         }
     }
     if (releases || !installVersion.empty()) return installCommand(installVersion);
+    if (frames == 0 && !list && newName.empty() && open.empty()) {
+        const int setup = setupFromPackage(!noLaunch);
+        if (setup >= 0) return setup;
+    }
     if (list || !newName.empty() || !open.empty()) { // windowless commands
         if (!engine.empty()) {
             mkmanager::Engine probe;

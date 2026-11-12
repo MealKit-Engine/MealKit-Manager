@@ -14,4 +14,6 @@ if not exist build\build.ninja cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=R
 cmake --build build || exit /b 1
 ctest --test-dir build --output-on-failure || exit /b 1
 if /i "%~1"=="install" cmake --install build --prefix "%LOCALAPPDATA%\MealKit\manager" || exit /b 1
+rem Start menu and desktop shortcuts, the same as a package install (scripts\install.ps1 shortcuts)
+if /i "%~1"=="install" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install.ps1" shortcuts -To "%LOCALAPPDATA%\MealKit\manager" || exit /b 1
 echo [MealKit Manager] Build OK: %~dp0build\bin\MealKitManager.exe

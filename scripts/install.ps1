@@ -3,12 +3,19 @@
 #   install.ps1 list   -Index <url|path>                                   → one line per engine: engine<TAB>version<TAB>size<TAB>url<TAB>sha256
 #   install.ps1 engine -Index <url|path> -Version <x.y.z> -Root <engines>  → downloads, checks the SHA-256, extracts to <Root>\<version>,
 #                                                                            last line: installed<TAB><folder>
+#   install.ps1 self -From <folder> -To <folder>                           → copies the Manager (exe, this script) from a downloaded package
+#                                                                            into To (%LOCALAPPDATA%\MealKit\manager) and makes the shortcuts
+#   install.ps1 shortcuts -To <folder>                                     → Start menu + desktop shortcuts to <To>\MealKitManager.exe
+#                                                                            (only the Manager gets shortcuts: engine docs/DECISIONS.md "How the Manager installs")
+# MEALKIT_SHORTCUT_DIR puts both shortcuts in that folder instead (tests).
 # The index is engine tools\release_index.ps1's format 1. url may be http(s), file:/// or a plain path (local tests).
 param(
-    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine")][string]$Command,
-    [Parameter(Mandatory = $true)][string]$Index,
+    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine", "self", "shortcuts")][string]$Command,
+    [string]$Index = "",
     [string]$Version = "",
-    [string]$Root = ""
+    [string]$Root = "",
+    [string]$From = "",
+    [string]$To = ""
 )
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue" # Invoke-WebRequest's progress bar makes 5.1 downloads very slow
@@ -25,6 +32,50 @@ function Fetch([string]$location, [string]$destination) {
     if ($local) { Copy-Item -LiteralPath $local -Destination $destination -Force }
     else { Invoke-WebRequest -Uri $location -OutFile $destination -UseBasicParsing }
 }
+
+function Make-Shortcut([string]$folder, [string]$exe) {
+    New-Item -ItemType Directory -Force $folder | Out-Null
+    $link = Join-Path $folder "MealKit Manager.lnk"
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($link)
+    $shortcut.TargetPath = $exe
+    $shortcut.WorkingDirectory = Split-Path $exe -Parent
+    $shortcut.IconLocation = "$exe,0"
+    $shortcut.Description = "MealKit Manager"
+    $shortcut.Save()
+    Write-Output "shortcut`t$link"
+}
+function Make-Shortcuts([string]$to) {
+    $exe = Join-Path $to "MealKitManager.exe"
+    if (-not (Test-Path $exe)) { Fail "$exe not found" }
+    if ($env:MEALKIT_SHORTCUT_DIR) {
+        Make-Shortcut $env:MEALKIT_SHORTCUT_DIR $exe
+        return
+    }
+    Make-Shortcut ([Environment]::GetFolderPath("Programs")) $exe # Start menu (current user)
+    Make-Shortcut ([Environment]::GetFolderPath("DesktopDirectory")) $exe
+}
+
+if ($Command -eq "shortcuts" -or $Command -eq "self") {
+    if (-not $To) { Fail "$Command needs -To" }
+    if ($Command -eq "self") {
+        if (-not $From) { Fail "self needs -From" }
+        if (-not (Test-Path (Join-Path $From "MealKitManager.exe"))) { Fail "No MealKitManager.exe in $From" }
+        New-Item -ItemType Directory -Force $To | Out-Null
+        # The running Manager is the package copy, so the installed exe isn't in use (an open installed Manager would block this: close it first)
+        foreach ($name in @("MealKitManager.exe", "install.ps1", "LICENSE")) {
+            $src = Join-Path $From $name
+            if (Test-Path $src) {
+                try { Copy-Item -LiteralPath $src -Destination (Join-Path $To $name) -Force }
+                catch { Fail "Could not replace $name in $To (is MealKit Manager open there? Close it and try again)" }
+            }
+        }
+        Write-Output "installed`t$To"
+    }
+    Make-Shortcuts $To
+    exit 0
+}
+if (-not $Index) { Fail "$Command needs -Index" }
 
 $temp = Join-Path ([IO.Path]::GetTempPath()) ("mealkit-install-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force $temp | Out-Null
