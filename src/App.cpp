@@ -41,6 +41,12 @@ std::string pathJoin(const std::string& a, const std::string& b) {
     return (last == '\\' || last == '/') ? a + b : a + "\\" + b;
 }
 
+// scripts\install.ps1, copied beside the exe by the build and cmake --install
+std::string installerScript() {
+    const char* base = SDL_GetBasePath();
+    return pathJoin(base ? base : "", "install.ps1");
+}
+
 std::string defaultProjectLocation() {
     const std::vector<std::string> saved = readList(pathJoin(userDirectory(), "manager_settings.txt"));
     for (const std::string& line : saved)
@@ -79,7 +85,11 @@ void App::reload() { m_catalog.load(m_extraEngine); }
 void App::frame() {
     takePickedFolder();
     if (m_job.takeFinished()) {
-        if (m_jobListsModules) { // module list: the status line stays and it shows in the [Modules] tab
+        if (m_jobListsReleases) { // release list: shows in the [Engines] tab
+            m_jobListsReleases = false;
+            m_releases = parseReleaseList(m_job.output());
+            m_releasesError = m_job.exitCode() != 0 ? m_job.output() : std::string();
+        } else if (m_jobListsModules) { // module list: the status line stays and it shows in the [Modules] tab
             m_jobListsModules = false;
             m_modules = parseModuleList(m_job.output());
             if (m_job.exitCode() != 0) m_modules.error = m_job.output();
@@ -104,6 +114,11 @@ void App::finishJob() {
         m_selected = normalizeDirectory(m_jobAdd);
     }
     m_jobAdd.clear();
+    if (m_jobInstallsEngine) {
+        m_jobInstallsEngine = false;
+        const std::string folder = installedFolder(m_job.output());
+        if (ok && !folder.empty()) m_catalog.addEngine(folder);
+    }
     reload();
 }
 
@@ -126,10 +141,11 @@ void App::drawWindow() {
             ImGui::EndTabItem();
         }
         m_openModulesTab = false;
-        if (ImGui::BeginTabItem(tr("Engines"))) {
+        if (ImGui::BeginTabItem(tr("Engines"), nullptr, m_openEnginesTab ? ImGuiTabItemFlags_SetSelected : 0)) {
             enginesTab();
             ImGui::EndTabItem();
         }
+        m_openEnginesTab = false;
         if (ImGui::BeginTabItem(tr("Tools"))) {
             toolsTab();
             ImGui::EndTabItem();
@@ -253,6 +269,60 @@ void App::enginesTab() {
                 if (ImGui::SmallButton(tr("Build Editor")))
                     // No console, so it runs in the system code page (matches ninja's /showIncludes prefix)
                     m_job.start(tr("Editor build"), {"cmd.exe", "/d", "/c", pathJoin(e.directory, "build.bat"), "Editor"});
+                ImGui::EndDisabled();
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    // Engines to install from the release index (only the newest patch of each MINOR is listed: engine docs/DECISIONS.md "How the Manager installs")
+    ImGui::Spacing();
+    ImGui::SeparatorText(tr("Install"));
+    const std::string index = releaseIndex();
+    if (index.empty()) {
+        ImGui::TextDisabled("%s", tr("No release index yet (MEALKIT_RELEASE_INDEX)."));
+        return;
+    }
+    if (!m_releasesFetched && !m_job.running()) {
+        m_releasesFetched = true;
+        if (m_job.start(tr("Engine list"), powershellArgs(installerScript(), {"list", "-Index", index}))) m_jobListsReleases = true;
+    }
+    if (m_jobListsReleases) {
+        ImGui::TextDisabled("%s", tr("Reading..."));
+        return;
+    }
+    if (!m_releasesError.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("Could not read the release index."));
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Retry"))) m_releasesFetched = false;
+        ImGui::TextDisabled("%s", m_releasesError.c_str());
+        return;
+    }
+    if (ImGui::BeginTable("##releases", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn(tr("Version"), ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("0.00.00  ").x);
+        ImGui::TableSetupColumn(tr("Size"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Build Editor  ").x * 1.4f);
+        ImGui::TableHeadersRow();
+        for (const Release& r : m_releases) {
+            ImGui::PushID(r.version.c_str());
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(r.version.c_str());
+            ImGui::TableNextColumn();
+            ImGui::Text("%.0f MB", static_cast<double>(r.size) / (1024.0 * 1024.0));
+            ImGui::TableNextColumn();
+            if (m_catalog.hasEngineVersion(r.version)) ImGui::TextUnformatted(tr("installed"));
+            else {
+                ImGui::BeginDisabled(m_job.running());
+                if (ImGui::SmallButton(tr("Install")) &&
+                    m_job.start(trf("Install engine %s", r.version.c_str()),
+                                powershellArgs(installerScript(), {"engine", "-Index", index, "-Version", r.version, "-Root", enginesRoot()}))) {
+                    m_jobInstallsEngine = true;
+                    m_status = trf("Installing engine %s...", r.version.c_str());
+                    m_statusError = false;
+                    m_jobOutput.clear();
+                }
                 ImGui::EndDisabled();
             }
             ImGui::PopID();

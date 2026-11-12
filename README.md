@@ -6,7 +6,7 @@ Hub app for the [MealKit](https://github.com/MealKit-Engine/MealKit) tool family
 
 - **Projects**: recent and favorite projects (the same list the editor keeps), search, create a new project, import a folder, open it in its engine's editor, upgrade it when the engine is newer, show the folder.
 - **Modules**: the source modules of the selected project and the module registry ([MealKit-Modules](https://github.com/MealKit-Engine/MealKit-Modules)). Add, update and remove run the project's engine `tools\module.ps1`.
-- **Engines**: the engines your projects point to, plus folders you add. Builds an engine's editor when it is missing.
+- **Engines**: the engines your projects point to, plus folders you add. Builds an engine's editor when it is missing. Installs engines from the release index (`scripts/install.ps1`: download, SHA-256 check, extract) without building them.
 - **Tools**: MealKit tools found by their `mealkit-tool.txt` manifest (for example MkAudio), opened with the selected project.
 
 The Manager does not link the engine. It talks to it only through files and command lines, so one Manager works with every engine version:
@@ -41,6 +41,8 @@ MealKitManager [--engine <engine folder>] [--lang ko|en]
 MealKitManager --list                                   print engines, projects and tools
 MealKitManager [--engine <folder>] --new <Name> --path <folder> [--template arena|empty]   create a project without a window (empty: engine 0.7.21+)
 MealKitManager --open <project folder>                  open a project in its engine's editor
+MealKitManager --releases                               engines in the release index (MEALKIT_RELEASE_INDEX, url or path)
+MealKitManager --install-engine <version>               download, check and install one into %LOCALAPPDATA%\MealKit\engines\<version>
 MealKitManager --frames N --capture shot.png            draw N frames, save the last one, quit
 ```
 

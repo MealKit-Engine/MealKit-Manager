@@ -25,7 +25,11 @@ public:
         if (!project.empty()) m_selected = normalizeDirectory(project);
     }
 
+    // Start on the [Engines] tab (--engines: screen check)
+    void showEnginesTab() { m_openEnginesTab = true; }
+
 private:
+    bool m_openEnginesTab = false;
     void reload();
     void finishJob();
     void drawWindow();
@@ -52,6 +56,13 @@ private:
     std::string m_jobOutput; // output of a failed job (expanded from the status line)
 
     std::string m_selected;
+
+    // [Engines] tab: engines in the release index (scripts\install.ps1 list), installed with install.ps1 engine
+    std::vector<Release> m_releases;
+    std::string m_releasesError;
+    bool m_releasesFetched = false;
+    bool m_jobListsReleases = false;
+    bool m_jobInstallsEngine = false;
 
     // [Modules] tab: modules of the selected project and the registry (engine tools\module.ps1 search -Tsv)
     ModuleList m_modules;

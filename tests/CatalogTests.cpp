@@ -165,6 +165,19 @@ void testModuleList() {
 
 } // namespace
 
+// install.ps1 list / engine output (engine ROADMAP R2)
+void testReleases() {
+    const std::vector<Release> list = parseReleaseList(
+        "[MealKit] noise\r\nengine\t0.9.4\t39366595\thttps://x/mealkit-engine-0.9.4-windows-x64.zip\tabc\r\n"
+        "engine\t0.8.2\t100\tfile:///C:/e.zip\tdef\nengine\t\t1\turl\tsha\ntool\tMkAudio\t1\tu\ts\n");
+    CHECK(list.size() == 2);
+    CHECK(list[0].version == "0.9.4" && list[0].size == 39366595ull && list[0].sha256 == "abc");
+    CHECK(list[0].url == "https://x/mealkit-engine-0.9.4-windows-x64.zip");
+    CHECK(list[1].version == "0.8.2" && list[1].url == "file:///C:/e.zip");
+    CHECK(installedFolder("[MealKit] Downloading\r\ninstalled\tC:\\Users\\a\\engines\\0.9.4\r\n") == "C:\\Users\\a\\engines\\0.9.4");
+    CHECK(installedFolder("[MealKit] failed\n").empty());
+}
+
 int main() {
     const fs::path root = fs::temp_directory_path() / "mkmanager_tests";
     std::error_code ec;
@@ -173,6 +186,7 @@ int main() {
     testKeys(root);
     testTranslations();
     testModuleList();
+    testReleases();
     fs::remove_all(root, ec);
     std::printf(g_failures ? "FAILED (%d)\n" : "PASS\n", g_failures);
     return g_failures ? 1 : 0;

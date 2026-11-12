@@ -50,6 +50,22 @@ using mkcontract::sameDirectory;
 using mkcontract::userDirectory;
 using mkcontract::writeList;
 
+// An engine in the suite release index (engine tools\release_index.ps1), as scripts\install.ps1 list prints it
+struct Release {
+    std::string version;
+    std::string url;
+    std::string sha256;
+    unsigned long long size = 0;
+};
+// "engine<TAB>version<TAB>size<TAB>url<TAB>sha256" lines; other lines are skipped
+std::vector<Release> parseReleaseList(const std::string& output);
+// Folder from the "installed<TAB><folder>" line of install.ps1 engine (blank if none)
+std::string installedFolder(const std::string& output);
+// Release index location: MEALKIT_RELEASE_INDEX (url or path). Blank until the index is published (engine ROADMAP R2)
+std::string releaseIndex();
+// Where installed engines go: <user folder>\engines (%LOCALAPPDATA%\MealKit\engines)
+std::string enginesRoot();
+
 bool readProject(const std::string& directory, Project& out);
 bool readEngine(const std::string& directory, Engine& out);
 
@@ -67,6 +83,8 @@ public:
     const Engine* engineFor(const Project& project) const;
     // Whether it needs upgrading to this engine (project engineVersion != engine VERSION)
     bool needsUpgrade(const Project& project) const;
+    // Whether an engine of this version is already in the list
+    bool hasEngineVersion(const std::string& version) const;
 
     void addRecent(const std::string& directory);    // to the top of the list
     void removeRecent(const std::string& directory); // removed only from the list (the folder stays)
