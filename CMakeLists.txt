@@ -4,7 +4,7 @@
 #   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build && ctest --test-dir build
 #   cmake --install build --prefix "%LOCALAPPDATA%\MealKit\manager"   (the editor launches this when opened without a project)
 cmake_minimum_required(VERSION 3.25)
-project(MealKitManager VERSION 0.1.0 LANGUAGES C CXX)
+project(MealKitManager VERSION 0.2.0 LANGUAGES C CXX)
 
 # SDL3 (static, without tests/examples)
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)

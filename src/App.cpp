@@ -91,6 +91,7 @@ void App::frame() {
         } else if (m_jobListsReleases) { // release list: shows in the [Engines] tab
             m_jobListsReleases = false;
             m_releases = parseReleaseList(m_job.output());
+            m_managerRelease = parseManagerRelease(m_job.output());
             m_releasesError = m_job.exitCode() != 0 ? m_job.output() : std::string();
         } else if (m_jobListsModules) { // module list: the status line stays and it shows in the [Modules] tab
             m_jobListsModules = false;
@@ -153,6 +154,14 @@ void App::finishJob() {
         m_selected = normalizeDirectory(m_jobAdd);
     }
     m_jobAdd.clear();
+    if (m_jobUpdatesManager) { // new files are in place: start the new Manager and quit this one
+        m_jobUpdatesManager = false;
+        std::string error;
+        if (ok && launchDetached({mkcontract::joinPath(mkcontract::joinPath(userDirectory(), "manager"), "MealKitManager.exe")}, error))
+            quitRequested = true;
+        else if (ok)
+            m_status = trf("Updated, but the new Manager didn't start: %s", error.c_str());
+    }
     if (m_jobInstallsEngine) {
         m_jobInstallsEngine = false;
         const std::string folder = installedFolder(m_job.output());
@@ -644,6 +653,19 @@ void App::statusBar() {
     if (m_job.running()) {
         static const char spin[] = "|/-\\";
         ImGui::Text("%c %s...", spin[static_cast<int>(ImGui::GetTime() * 8.0) % 4], m_job.label().c_str());
+        return;
+    }
+    // A newer Manager in the release index: offered here, applied only to the installed copy (a dev build in build\bin is left alone)
+    if (m_status.empty() && !m_managerRelease.version.empty() && versionLess(MKMANAGER_VERSION, m_managerRelease.version)) {
+        ImGui::TextColored(ImVec4(0.55f, 0.8f, 1.0f, 1.0f), "%s", trf("MealKit Manager %s is available (this is %s).", m_managerRelease.version.c_str(), MKMANAGER_VERSION).c_str());
+        const char* base = SDL_GetBasePath();
+        const std::string installed = mkcontract::joinPath(userDirectory(), "manager");
+        if (base && sameDirectory(base, installed)) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton(tr("Update and Restart")) &&
+                m_job.start(tr("Manager update"), powershellArgs(installerScript(), {"update", "-Index", releaseIndex(), "-To", installed})))
+                m_jobUpdatesManager = true;
+        }
         return;
     }
     if (m_status.empty()) {

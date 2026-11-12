@@ -63,6 +63,15 @@ std::vector<Release> parseReleaseList(const std::string& output) {
     return out;
 }
 
+Release parseManagerRelease(const std::string& output) {
+    for (const std::string& line : lines(output)) {
+        const std::vector<std::string> f = splitTabs(line);
+        if (f.size() < 5 || f[0] != "manager" || f[1].empty() || f[3].empty()) continue;
+        return Release{f[1], f[3], f[4], std::strtoull(f[2].c_str(), nullptr, 10)};
+    }
+    return {};
+}
+
 std::string installedFolder(const std::string& output) {
     std::string folder;
     for (const std::string& line : lines(output))

@@ -5,6 +5,7 @@
 //   MealKitManager --open <project folder>                         opens that project in its engine's editor without a window
 //   MealKitManager --releases | --install-engine <version>             engines in the release index (MEALKIT_RELEASE_INDEX) / install one
 //   (run from a downloaded package, with SETUP beside the exe)          installs itself with shortcuts and starts the installed copy (--no-launch: doesn't start it)
+//   MealKitManager --uninstall [--yes]                                 remove the installed Manager, its shortcuts and its Installed apps entry
 //   MealKitManager --version
 #include "App.h"
 #include "Strings.h"
@@ -21,7 +22,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
+#if defined(_WIN32)
+#include <process.h> // _getpid (--uninstall)
+#else
+#include <unistd.h>
+#define _getpid getpid
+#endif
 
 namespace {
 
@@ -188,6 +196,48 @@ int setupFromPackage(bool launch) {
     return 0;
 }
 
+// An update renames the running exe to MealKitManager.old.exe (install.ps1 update); the next start deletes it
+void removeOldExe() {
+    const char* base = SDL_GetBasePath();
+    if (!base) return;
+    std::error_code ec;
+    std::filesystem::remove(mkcontract::pathOf(mkcontract::joinPath(base, "MealKitManager.old.exe")), ec);
+}
+
+// --uninstall (Windows "Installed apps" runs it): asks, then a detached install.ps1 uninstall waits for this process to quit and removes
+// the shortcuts, the uninstall entry and the Manager folder. Engines, tools and the user lists stay (--yes: no question, for tests)
+int uninstallManager(bool assumeYes) {
+    const std::string to = mkcontract::joinPath(mkmanager::userDirectory(), "manager");
+    if (!assumeYes) {
+        const SDL_MessageBoxButtonData buttons[] = {{SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Uninstall"},
+                                                    {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel"}};
+        const std::string text = "Remove MealKit Manager, its shortcuts and " + to +
+                                 "?\n\nInstalled engines, tools and your projects are kept (" + mkmanager::userDirectory() + ").";
+        const SDL_MessageBoxData box = {SDL_MESSAGEBOX_WARNING, nullptr, "MealKit Manager", text.c_str(), 2, buttons, nullptr};
+        int pressed = 0;
+        if (!SDL_ShowMessageBox(&box, &pressed) || pressed != 1) return 1;
+    }
+    const char* base = SDL_GetBasePath();
+    // A copy of the script in the temp folder runs it, since the Manager folder (and the script in it) is being deleted
+    const std::filesystem::path script = std::filesystem::temp_directory_path() / "mealkit-manager-uninstall.ps1";
+    std::error_code ec;
+    std::filesystem::copy_file(mkcontract::pathOf(mkcontract::joinPath(base ? base : "", "install.ps1")), script,
+                               std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+        std::printf("cannot copy install.ps1: %s\n", ec.message().c_str());
+        return 1;
+    }
+    std::string error;
+    if (!mkmanager::launchDetached(mkmanager::powershellArgs(mkcontract::utf8Of(script),
+                                                             {"uninstall", "-To", to, "-WaitPid", std::to_string(static_cast<unsigned long>(_getpid()))}),
+                                   error)) {
+        std::printf("cannot start the uninstaller: %s\n", error.c_str());
+        return 1;
+    }
+    std::printf("uninstalling %s\n", to.c_str());
+    return 0;
+}
+
 // Window placement kept between runs: manager_window.txt in the user folder ("x y w h maximized" keys, Manager only)
 struct Placement {
     int x = 0, y = 0, w = 0, h = 0;
@@ -245,7 +295,7 @@ bool onSomeDisplay(const Placement& p) {
 int main(int argc, char** argv) {
     std::string engine, capture, language, newName, newPath, newTemplate, open, modules;
     long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
-    bool list = false, releases = false, enginesTab = false, noLaunch = false;
+    bool list = false, releases = false, enginesTab = false, noLaunch = false, uninstall = false, assumeYes = false;
     std::string installVersion;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--engine") == 0 && i + 1 < argc) engine = argv[++i];
@@ -261,12 +311,16 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--releases") == 0) releases = true;
         else if (std::strcmp(argv[i], "--engines") == 0) enginesTab = true;
         else if (std::strcmp(argv[i], "--no-launch") == 0) noLaunch = true;
+        else if (std::strcmp(argv[i], "--uninstall") == 0) uninstall = true;
+        else if (std::strcmp(argv[i], "--yes") == 0) assumeYes = true;
         else if (std::strcmp(argv[i], "--install-engine") == 0 && i + 1 < argc) installVersion = argv[++i];
         else if (std::strcmp(argv[i], "--version") == 0) {
             std::printf("MealKit Manager %s\n", MKMANAGER_VERSION);
             return 0;
         }
     }
+    if (uninstall) return uninstallManager(assumeYes);
+    removeOldExe();
     if (releases || !installVersion.empty()) return installCommand(installVersion);
     if (frames == 0 && !list && newName.empty() && open.empty()) {
         const int setup = setupFromPackage(!noLaunch);
@@ -351,6 +405,7 @@ int main(int argc, char** argv) {
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
         app.frame();
+        if (app.quitRequested) running = false;
         ImGui::Render();
 
         SDL_SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);

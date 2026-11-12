@@ -44,6 +44,7 @@ MealKitManager --open <project folder>                  open a project in its en
 MealKitManager (from an unzipped package, SETUP beside it)   install into %LOCALAPPDATA%\MealKit\manager with Start menu + desktop shortcuts, start it
 MealKitManager --releases                               engines in the release index (MEALKIT_RELEASE_INDEX, url or path)
 MealKitManager --install-engine <version>               download, check and install one into %LOCALAPPDATA%\MealKit\engines\<version>
+MealKitManager --uninstall [--yes]                      remove the installed Manager, its shortcuts and Installed apps entry (engines stay)
 MealKitManager --frames N --capture shot.png            draw N frames, save the last one, quit
 ```
 

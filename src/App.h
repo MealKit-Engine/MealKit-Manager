@@ -15,6 +15,7 @@ class App {
 public:
     bool iconFont = false; // module icons can be drawn (loadFonts merged an icon font)
     SDL_Window* window = nullptr;
+    bool quitRequested = false; // after an update started the new Manager
 
     void init(const std::string& extraEngine);
     void frame();
@@ -64,6 +65,8 @@ private:
     bool m_releasesFetched = false;
     bool m_jobListsReleases = false;
     bool m_jobInstallsEngine = false;
+    Release m_managerRelease; // the index's Manager entry (update check)
+    bool m_jobUpdatesManager = false;
 
     // C++ compiler and DXC on this PC (install.ps1 check, once at start and on [Check Again])
     Toolchain m_toolchain;

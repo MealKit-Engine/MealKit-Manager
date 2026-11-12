@@ -59,6 +59,8 @@ struct Release {
 };
 // "engine<TAB>version<TAB>size<TAB>url<TAB>sha256" lines; other lines are skipped
 std::vector<Release> parseReleaseList(const std::string& output);
+// The index's MealKit Manager entry, "manager<TAB>version<TAB>size<TAB>url<TAB>sha256" (version blank if none)
+Release parseManagerRelease(const std::string& output);
 // Folder from the "installed<TAB><folder>" line of install.ps1 engine (blank if none)
 std::string installedFolder(const std::string& output);
 // Release index location: MEALKIT_RELEASE_INDEX (url or path). Blank until the index is published (engine ROADMAP R2)

@@ -7,17 +7,23 @@
 #                                                                            into To (%LOCALAPPDATA%\MealKit\manager) and makes the shortcuts
 #   install.ps1 shortcuts -To <folder>                                     → Start menu + desktop shortcuts to <To>\MealKitManager.exe
 #                                                                            (only the Manager gets shortcuts: engine docs/DECISIONS.md "How the Manager installs")
+#                                                                            and registers it in Windows "Installed apps" (uninstall entry)
 #   install.ps1 check                                                      → compiler<TAB>ok|missing<TAB><Visual Studio folder>
 #                                                                            dxc<TAB>ok|missing<TAB><dxc.exe>
-# MEALKIT_SHORTCUT_DIR puts both shortcuts in that folder instead (tests).
+#   install.ps1 update -Index <url|path> -To <folder>                      → the index's "manager" entry: download, SHA-256, replace the files in To
+#                                                                            (the running exe is renamed to MealKitManager.old.exe), last line: updated<TAB><version>
+#   install.ps1 uninstall -To <folder> [-WaitPid <pid>]                    → waits for that process to quit, removes the shortcuts, the uninstall entry
+#                                                                            and To. Engines, tools and the user lists stay.
+# MEALKIT_SHORTCUT_DIR puts both shortcuts in that folder instead, MEALKIT_UNINSTALL_KEY renames the uninstall entry (tests).
 # The index is engine tools\release_index.ps1's format 1. url may be http(s), file:/// or a plain path (local tests).
 param(
-    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine", "self", "shortcuts", "check")][string]$Command,
+    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine", "self", "shortcuts", "check", "update", "uninstall")][string]$Command,
     [string]$Index = "",
     [string]$Version = "",
     [string]$Root = "",
     [string]$From = "",
-    [string]$To = ""
+    [string]$To = "",
+    [int]$WaitPid = 0
 )
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue" # Invoke-WebRequest's progress bar makes 5.1 downloads very slow
@@ -47,15 +53,45 @@ function Make-Shortcut([string]$folder, [string]$exe) {
     $shortcut.Save()
     Write-Output "shortcut`t$link"
 }
+function Shortcut-Folders {
+    if ($env:MEALKIT_SHORTCUT_DIR) { return @($env:MEALKIT_SHORTCUT_DIR) }
+    return @([Environment]::GetFolderPath("Programs"), [Environment]::GetFolderPath("DesktopDirectory")) # Start menu (current user), desktop
+}
+function Uninstall-Key {
+    $name = if ($env:MEALKIT_UNINSTALL_KEY) { $env:MEALKIT_UNINSTALL_KEY } else { "MealKitManager" }
+    return "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$name"
+}
+# Windows "Installed apps" entry for the current user; uninstalling there runs MealKitManager.exe --uninstall
+function Register([string]$to) {
+    $exe = Join-Path $to "MealKitManager.exe"
+    $ver = ((& $exe --version | Out-String).Trim() -replace '^MealKit Manager\s+', '')
+    $key = Uninstall-Key
+    New-Item -Path $key -Force | Out-Null
+    $values = @{ DisplayName = "MealKit Manager"; DisplayVersion = $ver; Publisher = "MealKit"; DisplayIcon = "$exe,0";
+                 InstallLocation = $to; UninstallString = "`"$exe`" --uninstall" }
+    foreach ($k in $values.Keys) { New-ItemProperty -Path $key -Name $k -Value $values[$k] -PropertyType String -Force | Out-Null }
+    foreach ($k in @("NoModify", "NoRepair")) { New-ItemProperty -Path $key -Name $k -Value 1 -PropertyType DWord -Force | Out-Null }
+    Write-Output "registered`t$key"
+}
 function Make-Shortcuts([string]$to) {
     $exe = Join-Path $to "MealKitManager.exe"
     if (-not (Test-Path $exe)) { Fail "$exe not found" }
-    if ($env:MEALKIT_SHORTCUT_DIR) {
-        Make-Shortcut $env:MEALKIT_SHORTCUT_DIR $exe
-        return
+    foreach ($folder in Shortcut-Folders) { Make-Shortcut $folder $exe }
+    Register $to
+}
+
+if ($Command -eq "uninstall") {
+    if (-not $To) { Fail "uninstall needs -To" }
+    if ($WaitPid) { Wait-Process -Id $WaitPid -Timeout 30 -ErrorAction SilentlyContinue }
+    foreach ($folder in Shortcut-Folders) {
+        $link = Join-Path $folder "MealKit Manager.lnk"
+        if (Test-Path $link) { Remove-Item -Force $link; Write-Output "removed`t$link" }
     }
-    Make-Shortcut ([Environment]::GetFolderPath("Programs")) $exe # Start menu (current user)
-    Make-Shortcut ([Environment]::GetFolderPath("DesktopDirectory")) $exe
+    $key = Uninstall-Key
+    if (Test-Path $key) { Remove-Item -Recurse -Force $key; Write-Output "removed`t$key" }
+    # The folder holds this script: PowerShell has read it already, so it can go too
+    if (Test-Path $To) { Remove-Item -Recurse -Force $To; Write-Output "removed`t$To" }
+    exit 0
 }
 
 if ($Command -eq "check") {
@@ -103,7 +139,39 @@ try {
     if ($data.format -ne 1) { Fail "Release index format $($data.format) is newer than this Manager knows (1). Update MealKit Manager." }
     $engines = @($data.engines)
 
+    $mgr = $data.manager
+    if ($Command -eq "update") {
+        if (-not $To) { Fail "update needs -To" }
+        if (-not $mgr) { Fail "The release index has no MealKit Manager entry." }
+        $zip = Join-Path $temp "manager.zip"
+        try { Fetch $mgr.url $zip } catch { Fail "Download failed: $($_.Exception.Message)" }
+        $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+        if ($hash -ne $mgr.sha256.ToLower()) { Fail "The download doesn't match the release index (SHA-256 $hash). Nothing was changed." }
+        $new = Join-Path $temp "manager"
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [IO.Compression.ZipFile]::ExtractToDirectory($zip, $new)
+        if (-not (Test-Path (Join-Path $new "MealKitManager.exe"))) { Fail "The package has no MealKitManager.exe." }
+        # Windows lets a running exe be renamed but not overwritten: the old one steps aside and is deleted on the next start
+        $exe = Join-Path $To "MealKitManager.exe"
+        $old = Join-Path $To "MealKitManager.old.exe"
+        if (Test-Path $old) { Remove-Item -Force $old -ErrorAction SilentlyContinue }
+        if (Test-Path $exe) { Rename-Item $exe "MealKitManager.old.exe" }
+        try {
+            foreach ($name in @("MealKitManager.exe", "install.ps1", "LICENSE")) {
+                $src = Join-Path $new $name
+                if (Test-Path $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $To $name) -Force }
+            }
+        } catch {
+            if (-not (Test-Path $exe) -and (Test-Path $old)) { Rename-Item $old "MealKitManager.exe" }
+            Fail "Could not replace the Manager files: $($_.Exception.Message)"
+        }
+        Register $To
+        Write-Output "updated`t$($mgr.version)"
+        exit 0
+    }
+
     if ($Command -eq "list") {
+        if ($mgr) { Write-Output ("manager`t{0}`t{1}`t{2}`t{3}" -f $mgr.version, $mgr.size, $mgr.url, $mgr.sha256) }
         foreach ($e in $engines) { Write-Output ("engine`t{0}`t{1}`t{2}`t{3}" -f $e.version, $e.size, $e.url, $e.sha256) }
         exit 0
     }

@@ -217,6 +217,10 @@ void testReleases() {
     CHECK(list[1].version == "0.8.2" && list[1].url == "file:///C:/e.zip");
     CHECK(installedFolder("[MealKit] Downloading\r\ninstalled\tC:\\Users\\a\\engines\\0.9.4\r\n") == "C:\\Users\\a\\engines\\0.9.4");
     CHECK(installedFolder("[MealKit] failed\n").empty());
+    const Release mgr = parseManagerRelease("manager\t0.2.0\t1484438\thttps://x/m.zip\tff\r\nengine\t0.9.4\t1\tu\ts\n");
+    CHECK(mgr.version == "0.2.0" && mgr.size == 1484438ull && mgr.url == "https://x/m.zip" && mgr.sha256 == "ff");
+    CHECK(parseManagerRelease("engine\t0.9.4\t1\tu\ts\n").version.empty());
+    CHECK(parseReleaseList("manager\t0.2.0\t1\tu\ts\n").empty());
 
     const Toolchain have = parseToolchain("compiler\tok\tC:\\VS\r\ndxc\tok\tC:\\dxc.exe\r\n");
     CHECK(have.checked && have.compiler && have.visualStudio == "C:\\VS" && have.dxc && have.dxcPath == "C:\\dxc.exe");
