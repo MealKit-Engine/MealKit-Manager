@@ -34,6 +34,9 @@ target_compile_features(mkmanager_core PUBLIC cxx_std_20)
 
 add_executable(MealKitManager WIN32 src/main.cpp src/App.h src/App.cpp src/Job.h src/Job.cpp)
 target_link_libraries(MealKitManager PRIVATE mkmanager_core mkmanager_imgui SDL3::SDL3-static)
+if(WIN32)
+    target_link_libraries(MealKitManager PRIVATE dwmapi) # editor-colored title bar
+endif()
 target_compile_definitions(MealKitManager PRIVATE MKMANAGER_VERSION="${PROJECT_VERSION}")
 
 foreach(target mkmanager_core MealKitManager)

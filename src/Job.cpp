@@ -14,6 +14,8 @@ std::vector<const char*> argv(const std::vector<std::string>& args) {
 
 } // namespace
 
+double Job::seconds() const { return static_cast<double>(SDL_GetTicks() - m_startTicks) / 1000.0; }
+
 Job::~Job() {
     if (m_thread.joinable()) m_thread.join();
 }
@@ -22,6 +24,7 @@ bool Job::start(const std::string& label, std::vector<std::string> args) {
     if (m_running.load()) return false;
     if (m_thread.joinable()) m_thread.join();
     m_label = label;
+    m_startTicks = SDL_GetTicks();
     m_output.clear();
     m_exitCode = 0;
     m_finished = false;

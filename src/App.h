@@ -11,6 +11,13 @@ struct SDL_Window;
 
 namespace mkmanager {
 
+// Segoe Fluent Icons / MDL2 Assets glyphs, the same ones the editor uses (module-editor ImGuiLayer.h icon::)
+inline constexpr const char* kIconAdd = "\xEE\x9C\x90";        // U+E710
+inline constexpr const char* kIconFolder = "\xEE\xA2\xB7";     // U+E8B7
+inline constexpr const char* kIconRefresh = "\xEE\x9C\xAC";    // U+E72C
+inline constexpr const char* kIconStar = "\xEE\x9C\xB4";       // U+E734
+inline constexpr const char* kIconStarFilled = "\xEE\x9C\xB5"; // U+E735
+
 class App {
 public:
     bool iconFont = false; // module icons can be drawn (loadFonts merged an icon font)
@@ -87,6 +94,21 @@ private:
     std::string m_confirmRemove;
     bool m_openModulesTab = false; // select the [Modules] tab next frame
     char m_search[128] = {};
+
+    // [Projects] tab list: column sort (-1 = recent order; favorites stay on top) and keyboard
+    int m_sortColumn = -1;
+    bool m_sortAscending = true;
+    bool m_focusSearch = false;
+    // Changes picked while drawing the list, applied after it (reload rebuilds the list, so pointers into it die)
+    std::string m_pendingRemove;
+    std::string m_pendingFavorite;
+    bool m_pendingFavoriteOn = false;
+    std::string m_pendingOpen;
+    void projectList(bool busy);
+    const Project* selectedProject() const;
+    void projectMenu(const Project& p, bool busy);
+    void removeMissingProjects();
+    std::string iconLabel(const char* glyph, const char* label) const;
 
     // New project
     bool m_openNew = false;

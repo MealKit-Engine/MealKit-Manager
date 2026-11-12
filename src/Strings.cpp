@@ -137,6 +137,22 @@ constexpr Pair kKorean[] = {
     {"Imported %s", "%s을(를) 가져왔다"},
     {"%s is not a MealKit engine folder (VERSION, tools\\new_project.ps1)", "%s은(는) MealKit 엔진 폴더가 아니다 (VERSION, tools\\new_project.ps1)"},
     {"Added engine %s", "엔진 %s을(를) 더했다"},
+    {"Removed %d missing project(s) from the list", "없는 프로젝트 %d개를 목록에서 뺐다"},
+    {"Copy Path", "경로 복사"},
+    {"No projects yet", "아직 프로젝트가 없다"},
+    {"Make a new game, or import a folder that has mealkit.project.", "새 게임을 만들거나, mealkit.project가 있는 폴더를 가져온다."},
+    {"Remove Missing (%d)", "없는 프로젝트 빼기 (%d)"},
+    {"Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted).", "폴더나 mealkit.project가 없어진 프로젝트를 목록에서 뺀다 (아무것도 지우지 않는다)."},
+    {"Search (Ctrl+F)", "검색 (Ctrl+F)"},
+    {"Right-click a project for more", "프로젝트를 우클릭하면 더 있다"},
+    {"No projects match the search.", "맞는 프로젝트가 없다."},
+    {"no mealkit.project", "mealkit.project 없음"},
+    {"folder missing", "폴더 없음"},
+    {"Made with an older engine: [Upgrade Project] brings it to this one.", "예전 엔진으로 만든 프로젝트: [프로젝트 업그레이드]로 이 엔진에 맞춘다."},
+    {"Used by", "쓰는 곳"},
+    {"%d project(s)", "프로젝트 %d개"},
+    {"Install one from the list below, or unzip a tool into the folder above.", "아래 목록에서 설치하거나, 위 폴더에 도구 압축을 푼다."},
+    {"Unzip a tool into the folder above, then press Refresh on the Projects tab.", "위 폴더에 도구 압축을 풀고 [프로젝트] 탭에서 [새로 고침]을 누른다."},
 };
 
 bool g_korean = true;

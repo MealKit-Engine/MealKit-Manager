@@ -19,6 +19,7 @@ public:
     bool takeFinished();
 
     const std::string& label() const { return m_label; }
+    double seconds() const; // since the last start (the status bar shows it while running)
     int exitCode() const { return m_exitCode; }
     const std::string& output() const { return m_output; } // read only after it's finished
 
@@ -29,6 +30,7 @@ private:
     std::string m_label;
     std::string m_output;
     int m_exitCode = 0;
+    unsigned long long m_startTicks = 0;
 };
 
 // Launches a program without waiting (editor, tools). A reason on failure
