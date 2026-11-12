@@ -125,10 +125,10 @@ void App::toolchainBanner() {
     ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Check Again ").x * 2.6f);
     ImGui::InputText("##winget", line, sizeof(line), ImGuiInputTextFlags_ReadOnly);
     ImGui::SameLine();
-    if (ImGui::Button(tr("Copy"))) SDL_SetClipboardText(kBuildToolsWinget);
+    if (iconButton(kIconCopy, tr("Copy"))) SDL_SetClipboardText(kBuildToolsWinget);
     ImGui::SameLine();
     ImGui::BeginDisabled(m_job.running());
-    if (ImGui::Button(tr("Check Again"))) m_toolchainRequested = false;
+    if (iconButton(kIconRefresh, tr("Check Again"))) m_toolchainRequested = false;
     ImGui::EndDisabled();
     ImGui::TextDisabled("%s", tr("Without a compiler, use designer mode: open a project from the shared folder a programmer builds."));
     ImGui::Separator();
@@ -219,6 +219,17 @@ std::string App::iconLabel(const char* glyph, const char* label) const {
     return iconFont ? std::string(glyph) + "  " + label : std::string(label);
 }
 
+bool App::iconButton(const char* glyph, const std::string& name, bool small, const char* detail, const std::string& suffix) {
+    std::string label = iconFont ? std::string(glyph) + (suffix.empty() ? "" : " " + suffix) : name;
+    label += "##" + name;
+    const bool pressed = small ? ImGui::SmallButton(label.c_str()) : ImGui::Button(label.c_str());
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (detail) ImGui::SetTooltip("%s\n%s", name.c_str(), detail);
+        else if (iconFont) ImGui::SetTooltip("%s", name.c_str());
+    }
+    return pressed;
+}
+
 void App::removeMissingProjects() {
     int removed = 0;
     for (const Project& p : m_catalog.projects())
@@ -233,18 +244,18 @@ void App::removeMissingProjects() {
 
 void App::projectMenu(const Project& p, bool busy) {
     ImGui::BeginDisabled(busy || !p.valid);
-    if (ImGui::MenuItem(tr("Open in Editor"), "Enter")) m_pendingOpen = p.directory;
+    if (ImGui::MenuItem(iconLabel(kIconLaunch, tr("Open in Editor")).c_str(), "Enter")) m_pendingOpen = p.directory;
     ImGui::EndDisabled();
     ImGui::BeginDisabled(!p.valid);
-    if (ImGui::MenuItem(tr("Show Folder"))) SDL_OpenURL(("file:///" + p.directory).c_str());
+    if (ImGui::MenuItem(iconLabel(kIconFolderOpen, tr("Show Folder")).c_str())) SDL_OpenURL(("file:///" + p.directory).c_str());
     ImGui::EndDisabled();
-    if (ImGui::MenuItem(tr("Copy Path"))) SDL_SetClipboardText(p.directory.c_str());
+    if (ImGui::MenuItem(iconLabel(kIconCopy, tr("Copy Path")).c_str())) SDL_SetClipboardText(p.directory.c_str());
     ImGui::Separator();
     if (ImGui::MenuItem(tr("Favorite"), nullptr, p.favorite)) {
         m_pendingFavorite = p.directory;
         m_pendingFavoriteOn = !p.favorite;
     }
-    if (ImGui::MenuItem(tr("Remove from List"), "Del")) m_pendingRemove = p.directory;
+    if (ImGui::MenuItem(iconLabel(kIconRemove, tr("Remove from List")).c_str(), "Del")) m_pendingRemove = p.directory;
 }
 
 void App::projectsTab() {
@@ -281,16 +292,17 @@ void App::projectsTab() {
     for (const Project& p : projects) missing += p.valid ? 0 : 1;
 
     ImGui::BeginDisabled(busy);
-    if (ImGui::Button(newLabel.c_str())) m_openNew = true;
+    if (iconButton(kIconAdd, tr("New Project"))) m_openNew = true;
     ImGui::SameLine();
-    if (ImGui::Button(importLabel.c_str())) pickFolder(0);
+    if (iconButton(kIconFolder, tr("Import..."))) pickFolder(0);
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button(iconLabel(kIconRefresh, tr("Refresh")).c_str())) reload();
+    if (iconButton(kIconRefresh, tr("Refresh"))) reload();
     if (missing > 0) {
         ImGui::SameLine();
-        if (ImGui::Button(trf("Remove Missing (%d)", missing).c_str())) removeMissingProjects();
-        ImGui::SetItemTooltip("%s", tr("Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted)."));
+        if (iconButton(kIconRemove, trf("Remove Missing (%d)", missing), false,
+                       tr("Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted)."), std::to_string(missing)))
+            removeMissingProjects();
     }
     ImGui::SameLine();
     if (m_focusSearch || (!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_F))) {
@@ -346,32 +358,30 @@ void App::projectsTab() {
     const Release* missingEngine = selected && !m_catalog.engineFor(*selected) ? Catalog::releaseFor(*selected, m_releases) : nullptr;
     if (missingEngine) {
         // The project's engine isn't on this PC but the release index has its MINOR: install it, then [Open in Editor] finds it by version
-        if (ImGui::Button(trf("Install Engine %s", missingEngine->version.c_str()).c_str())) installEngine(*missingEngine);
+        if (iconButton(kIconDownload, trf("Install Engine %s", missingEngine->version.c_str()), false, nullptr, missingEngine->version)) installEngine(*missingEngine);
     } else {
         ImGui::BeginDisabled(selected && !selected->valid);
-        if (ImGui::Button(tr("Open in Editor")) && selected) openProject(*selected);
+        if (iconButton(kIconLaunch, tr("Open in Editor"), false, "Enter") && selected) openProject(*selected);
         ImGui::EndDisabled();
     }
     ImGui::SameLine();
     const bool upgrade = selected && m_catalog.needsUpgrade(*selected);
     ImGui::BeginDisabled(!upgrade);
-    if (ImGui::Button(tr("Upgrade Project")) && upgrade) {
+    if (iconButton(kIconUp, tr("Upgrade Project")) && upgrade) {
         const Engine* engine = m_catalog.engineFor(*selected);
         runScript(tr("Upgrade"), pathJoin(engine->directory, "tools\\upgrade_project.ps1"), {"-Project", selected->directory});
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button(tr("Show Folder")) && selected) SDL_OpenURL(("file:///" + selected->directory).c_str());
+    if (iconButton(kIconFolderOpen, tr("Show Folder")) && selected) SDL_OpenURL(("file:///" + selected->directory).c_str());
     ImGui::SameLine();
-    if (ImGui::Button(tr("Remove from List")) && selected) {
+    if (iconButton(kIconRemove, tr("Remove from List"), false, "Del") && selected) {
         m_catalog.removeRecent(selected->directory);
         m_status = trf("Removed %s from the list (the folder is kept)", selected->directory.c_str());
         m_statusError = false;
         reload();
     }
     ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", tr("Right-click a project for more"));
 }
 
 namespace {
@@ -503,10 +513,8 @@ void App::enginesTab() {
     toolchainBanner();
     toolchainLine();
     ImGui::BeginDisabled(m_job.running());
-    if (ImGui::Button(iconLabel(kIconFolder, tr("Add Engine Folder...")).c_str())) pickFolder(1);
+    if (iconButton(kIconFolder, tr("Add Engine Folder..."), false, tr("Engines used by your projects are found automatically."))) pickFolder(1);
     ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", tr("Engines used by your projects are found automatically."));
     if (ImGui::BeginTable("##engines", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
         ImGui::TableSetupColumn(tr("Version"), ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("0.00.00  ").x);
         ImGui::TableSetupColumn(tr("Folder"), ImGuiTableColumnFlags_WidthStretch);
@@ -523,8 +531,8 @@ void App::enginesTab() {
             ImGui::Selectable(e.directory.c_str(), false, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
             ImGui::SetItemTooltip("%s", e.directory.c_str());
             if (ImGui::BeginPopupContextItem("##menu")) {
-                if (ImGui::MenuItem(tr("Show Folder"))) SDL_OpenURL(("file:///" + e.directory).c_str());
-                if (ImGui::MenuItem(tr("Copy Path"))) SDL_SetClipboardText(e.directory.c_str());
+                if (ImGui::MenuItem(iconLabel(kIconFolderOpen, tr("Show Folder")).c_str())) SDL_OpenURL(("file:///" + e.directory).c_str());
+                if (ImGui::MenuItem(iconLabel(kIconCopy, tr("Copy Path")).c_str())) SDL_SetClipboardText(e.directory.c_str());
                 ImGui::EndPopup();
             }
             ImGui::TableNextColumn();
@@ -542,7 +550,7 @@ void App::enginesTab() {
             if (!e.editorExe.empty()) ImGui::TextUnformatted(tr("built"));
             else {
                 ImGui::BeginDisabled(m_job.running());
-                if (ImGui::SmallButton(tr("Build Editor")))
+                if (iconButton(kIconBuild, tr("Build Editor"), true))
                     // No console, so it runs in the system code page (matches ninja's /showIncludes prefix)
                     m_job.start(tr("Editor build"), {"cmd.exe", "/d", "/c", pathJoin(e.directory, "build.bat"), "Editor"});
                 ImGui::EndDisabled();
@@ -567,7 +575,7 @@ void App::enginesTab() {
     if (!m_releasesError.empty()) {
         ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("Could not read the release index."));
         ImGui::SameLine();
-        if (ImGui::SmallButton(tr("Retry"))) m_releasesFetched = false;
+        if (iconButton(kIconRefresh, tr("Retry"), true)) m_releasesFetched = false;
         ImGui::TextDisabled("%s", m_releasesError.c_str());
         return;
     }
@@ -587,7 +595,7 @@ void App::enginesTab() {
             if (m_catalog.hasEngineVersion(r.version)) ImGui::TextUnformatted(tr("installed"));
             else {
                 ImGui::BeginDisabled(m_job.running());
-                if (ImGui::SmallButton(tr("Install"))) installEngine(r);
+                if (iconButton(kIconDownload, tr("Install"), true)) installEngine(r);
                 ImGui::EndDisabled();
             }
             ImGui::PopID();
@@ -656,7 +664,7 @@ void App::modulesTab() {
     ImGui::Text(tr("Project: %s"), project->name.c_str());
     ImGui::SameLine();
     ImGui::BeginDisabled(busy);
-    if (ImGui::Button(tr("Refresh"))) m_modulesFor.clear();
+    if (iconButton(kIconRefresh, tr("Refresh"))) m_modulesFor.clear();
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-FLT_MIN);
@@ -693,12 +701,10 @@ void App::modulesTab() {
             else ImGui::TextDisabled("-");
             ImGui::TableNextColumn();
             ImGui::BeginDisabled(busy);
-            if (ImGui::SmallButton(tr("Update")))
+            if (iconButton(kIconSync, tr("Update"), true, tr("Files you changed are kept; the new version is written next to them as .new")))
                 runModuleTool(*engine, *project, trf("Update %s", m.name.c_str()), {"update", m.name}, false);
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                ImGui::SetTooltip("%s", tr("Files you changed are kept; the new version is written next to them as .new"));
             ImGui::SameLine();
-            if (ImGui::SmallButton(tr("Remove"))) m_confirmRemove = m.name;
+            if (iconButton(kIconRemove, tr("Remove"), true)) m_confirmRemove = m.name;
             ImGui::EndDisabled();
             ImGui::PopID();
         }
@@ -732,10 +738,8 @@ void App::modulesTab() {
             if (installed) ImGui::TextDisabled("%s", tr("Added"));
             else {
                 ImGui::BeginDisabled(busy);
-                if (ImGui::SmallButton(tr("Add")))
+                if (iconButton(kIconAdd, tr("Add"), true, tr("Module code runs inside the editor and the game. The registry checks that it builds, not what it does - read what you add.")))
                     runModuleTool(*engine, *project, trf("Add %s", r.name.c_str()), {"add", r.name}, false);
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                    ImGui::SetTooltip("%s", tr("Module code runs inside the editor and the game. The registry checks that it builds, not what it does - read what you add."));
                 ImGui::EndDisabled();
             }
             ImGui::PopID();
@@ -792,7 +796,7 @@ void App::toolsTab() {
             ImGui::TableNextColumn();
             ImGui::TextDisabled("%s", t.folder.c_str());
             ImGui::TableNextColumn();
-            if (ImGui::SmallButton(tr("Open"))) {
+            if (iconButton(kIconLaunch, tr("Open"), true)) {
                 std::vector<std::string> args = {t.exe};
                 if (project) args.insert(args.end(), {"--project", project->directory});
                 std::string error;
@@ -835,7 +839,7 @@ void App::toolsTab() {
             else {
                 ImGui::BeginDisabled(m_job.running());
                 const std::string label = installed ? trf("Update to %s", r.version.c_str()) : std::string(tr("Install"));
-                if (ImGui::SmallButton(label.c_str()) &&
+                if (iconButton(installed ? kIconSync : kIconDownload, label, true, nullptr, installed ? r.version : std::string()) &&
                     m_job.start(trf("Install %s %s", r.name.c_str(), r.version.c_str()),
                                 powershellArgs(installerScript(), {"tool", "-Index", releaseIndex(), "-Name", r.name, "-Root", toolsRoot()}))) {
                     m_status.clear();
@@ -868,7 +872,7 @@ void App::newProjectPopup() {
     if (!nameOk) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("Start with a letter; letters, digits and _ only (it becomes the exe name)."));
     ImGui::InputText(tr("Location"), m_newLocation, sizeof(m_newLocation));
     ImGui::SameLine();
-    if (ImGui::Button("...")) pickFolder(2);
+    if (iconButton(kIconFolder, tr("Location"))) pickFolder(2);
     if (engines.empty()) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("No engine found. Add one on the Engines tab."));
     else {
         const std::string preview = engines[m_newEngine].version + "  " + engines[m_newEngine].directory;
@@ -936,7 +940,7 @@ void App::statusBar() {
         const std::string installed = mkcontract::joinPath(userDirectory(), "manager");
         if (base && sameDirectory(base, installed)) {
             ImGui::SameLine();
-            if (ImGui::SmallButton(tr("Update and Restart")) &&
+            if (iconButton(kIconSync, tr("Update and Restart"), true) &&
                 m_job.start(tr("Manager update"), powershellArgs(installerScript(), {"update", "-Index", releaseIndex(), "-To", installed})))
                 m_jobUpdatesManager = true;
         }
@@ -952,11 +956,11 @@ void App::statusBar() {
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.75f, 0.28f, 0.28f, 1.0f));
-        const bool show = ImGui::SmallButton(tr("Output"));
+        const bool show = iconButton(kIconOutput, tr("Output"), true);
         ImGui::PopStyleColor(2);
         if (show) ImGui::OpenPopup("##output");
         if (ImGui::BeginPopup("##output")) {
-            if (ImGui::SmallButton(tr("Copy"))) SDL_SetClipboardText(m_jobOutput.c_str());
+            if (iconButton(kIconCopy, tr("Copy"), true)) SDL_SetClipboardText(m_jobOutput.c_str());
             ImGui::InputTextMultiline("##text", m_jobOutput.data(), m_jobOutput.size() + 1,
                                       ImVec2(ImGui::GetMainViewport()->WorkSize.x * 0.8f, ImGui::GetTextLineHeight() * 20),
                                       ImGuiInputTextFlags_ReadOnly);

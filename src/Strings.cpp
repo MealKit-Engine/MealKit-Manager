@@ -144,7 +144,6 @@ constexpr Pair kKorean[] = {
     {"Remove Missing (%d)", "없는 프로젝트 빼기 (%d)"},
     {"Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted).", "폴더나 mealkit.project가 없어진 프로젝트를 목록에서 뺀다 (아무것도 지우지 않는다)."},
     {"Search (Ctrl+F)", "검색 (Ctrl+F)"},
-    {"Right-click a project for more", "프로젝트를 우클릭하면 더 있다"},
     {"No projects match the search.", "맞는 프로젝트가 없다."},
     {"no mealkit.project", "mealkit.project 없음"},
     {"folder missing", "폴더 없음"},

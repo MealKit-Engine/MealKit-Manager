@@ -11,7 +11,16 @@ struct SDL_Window;
 
 namespace mkmanager {
 
-// Segoe Fluent Icons / MDL2 Assets glyphs, the same ones the editor uses (module-editor ImGuiLayer.h icon::)
+// Segoe Fluent Icons / MDL2 Assets glyphs, one per action across the suite (engine docs/TOOL_DESIGN.md "Glyphs")
+inline constexpr const char* kIconRemove = "\xEE\x9C\xB8";     // U+E738 remove from a list
+inline constexpr const char* kIconUp = "\xEE\x9D\x8A";         // U+E74A upgrade
+inline constexpr const char* kIconCopy = "\xEE\xA3\x88";       // U+E8C8
+inline constexpr const char* kIconLaunch = "\xEE\xA2\xA7";     // U+E8A7 open in its program
+inline constexpr const char* kIconFolderOpen = "\xEE\xA0\xB8"; // U+E838 show in Explorer
+inline constexpr const char* kIconDownload = "\xEE\xA2\x96";   // U+E896 install
+inline constexpr const char* kIconSync = "\xEE\xA2\x95";       // U+E895 update
+inline constexpr const char* kIconBuild = "\xEE\xA4\x8F";      // U+E90F
+inline constexpr const char* kIconOutput = "\xEE\xA2\xA5";     // U+E8A5
 inline constexpr const char* kIconAdd = "\xEE\x9C\x90";        // U+E710
 inline constexpr const char* kIconFolder = "\xEE\xA2\xB7";     // U+E8B7
 inline constexpr const char* kIconRefresh = "\xEE\x9C\xAC";    // U+E72C
@@ -109,6 +118,9 @@ private:
     void projectMenu(const Project& p, bool busy);
     void removeMissingProjects();
     std::string iconLabel(const char* glyph, const char* label) const;
+    // Icon-only button with its name (and an optional second line) in the tooltip; the name when there's no icon font.
+    // suffix is shown after the glyph (a count or a version)
+    bool iconButton(const char* glyph, const std::string& name, bool small = false, const char* detail = nullptr, const std::string& suffix = {});
 
     // New project
     bool m_openNew = false;
