@@ -70,6 +70,25 @@ std::string installedFolder(const std::string& output) {
     return folder;
 }
 
+Toolchain parseToolchain(const std::string& output) {
+    Toolchain t;
+    for (const std::string& line : lines(output)) {
+        const std::vector<std::string> f = splitTabs(line);
+        if (f.size() < 2) continue;
+        const bool ok = f[1] == "ok";
+        const std::string path = f.size() > 2 ? f[2] : std::string();
+        if (f[0] == "compiler") {
+            t.checked = true;
+            t.compiler = ok;
+            t.visualStudio = path;
+        } else if (f[0] == "dxc") {
+            t.dxc = ok;
+            t.dxcPath = path;
+        }
+    }
+    return t;
+}
+
 std::string releaseIndex() {
     const char* env = std::getenv("MEALKIT_RELEASE_INDEX");
     return env ? env : "";

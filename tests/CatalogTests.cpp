@@ -176,6 +176,12 @@ void testReleases() {
     CHECK(list[1].version == "0.8.2" && list[1].url == "file:///C:/e.zip");
     CHECK(installedFolder("[MealKit] Downloading\r\ninstalled\tC:\\Users\\a\\engines\\0.9.4\r\n") == "C:\\Users\\a\\engines\\0.9.4");
     CHECK(installedFolder("[MealKit] failed\n").empty());
+
+    const Toolchain have = parseToolchain("compiler\tok\tC:\\VS\r\ndxc\tok\tC:\\dxc.exe\r\n");
+    CHECK(have.checked && have.compiler && have.visualStudio == "C:\\VS" && have.dxc && have.dxcPath == "C:\\dxc.exe");
+    const Toolchain none = parseToolchain("compiler\tmissing\t\ndxc\tmissing\t\n");
+    CHECK(none.checked && !none.compiler && none.visualStudio.empty() && !none.dxc);
+    CHECK(!parseToolchain("[MealKit] error\n").checked);
 }
 
 int main() {

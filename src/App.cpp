@@ -85,7 +85,10 @@ void App::reload() { m_catalog.load(m_extraEngine); }
 void App::frame() {
     takePickedFolder();
     if (m_job.takeFinished()) {
-        if (m_jobListsReleases) { // release list: shows in the [Engines] tab
+        if (m_jobChecksToolchain) {
+            m_jobChecksToolchain = false;
+            m_toolchain = parseToolchain(m_job.output());
+        } else if (m_jobListsReleases) { // release list: shows in the [Engines] tab
             m_jobListsReleases = false;
             m_releases = parseReleaseList(m_job.output());
             m_releasesError = m_job.exitCode() != 0 ? m_job.output() : std::string();
@@ -97,7 +100,38 @@ void App::frame() {
             finishJob();
         }
     }
+    if (!m_toolchainRequested && !m_job.running()) {
+        m_toolchainRequested = true;
+        if (m_job.start(tr("Toolchain check"), powershellArgs(installerScript(), {"check"}))) m_jobChecksToolchain = true;
+    }
     drawWindow();
+}
+
+// No C++ compiler: game code (the game DLL) can't be built here. Shown on the [Projects] and [Engines] tabs
+void App::toolchainBanner() {
+    if (!m_toolchain.checked || m_toolchain.compiler) return;
+    const ImVec4 warn(1.0f, 0.75f, 0.35f, 1.0f);
+    ImGui::TextColored(warn, "%s", tr("No C++ compiler on this PC: game code can't be built, so projects can't open in the editor."));
+    ImGui::TextUnformatted(tr("Install Visual Studio Build Tools with C++ (about 6 GB), from a terminal:"));
+    static char line[256];
+    std::snprintf(line, sizeof(line), "%s", kBuildToolsWinget);
+    ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Check Again ").x * 2.6f);
+    ImGui::InputText("##winget", line, sizeof(line), ImGuiInputTextFlags_ReadOnly);
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Copy"))) SDL_SetClipboardText(kBuildToolsWinget);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(m_job.running());
+    if (ImGui::Button(tr("Check Again"))) m_toolchainRequested = false;
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("%s", tr("Without a compiler, use designer mode: open a project from the shared folder a programmer builds."));
+    ImGui::Separator();
+}
+
+// Engines tab: compiler and DXC state in one line
+void App::toolchainLine() {
+    if (!m_toolchain.checked) return;
+    ImGui::TextDisabled("%s  |  %s", m_toolchain.compiler ? trf("C++ compiler: %s", m_toolchain.visualStudio.c_str()).c_str() : tr("C++ compiler: not found"),
+                        m_toolchain.dxc ? tr("DXC: ready") : tr("DXC: downloaded with the first build"));
 }
 
 void App::finishJob() {
@@ -159,6 +193,7 @@ void App::drawWindow() {
 }
 
 void App::projectsTab() {
+    toolchainBanner();
     const bool busy = m_job.running();
     ImGui::BeginDisabled(busy);
     if (ImGui::Button(tr("+ New Project"))) m_openNew = true;
@@ -245,6 +280,8 @@ void App::projectsTab() {
 }
 
 void App::enginesTab() {
+    toolchainBanner();
+    toolchainLine();
     ImGui::BeginDisabled(m_job.running());
     if (ImGui::Button(tr("Add Engine Folder..."))) pickFolder(1);
     ImGui::EndDisabled();

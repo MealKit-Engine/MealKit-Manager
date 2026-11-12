@@ -66,6 +66,19 @@ std::string releaseIndex();
 // Where installed engines go: <user folder>\engines (%LOCALAPPDATA%\MealKit\engines)
 std::string enginesRoot();
 
+// What this PC has for building game code (scripts\install.ps1 check)
+struct Toolchain {
+    bool checked = false;
+    bool compiler = false; // Visual Studio or Build Tools with the C++ x64 tools
+    std::string visualStudio;
+    bool dxc = false; // the engine downloads DXC on the first build (cmake/Dxc.cmake)
+    std::string dxcPath;
+};
+Toolchain parseToolchain(const std::string& output);
+// Installs Visual Studio Build Tools with the C++ workload (shown to copy when no compiler is found)
+inline constexpr const char* kBuildToolsWinget =
+    "winget install Microsoft.VisualStudio.2022.BuildTools --override \"--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\"";
+
 bool readProject(const std::string& directory, Project& out);
 bool readEngine(const std::string& directory, Engine& out);
 

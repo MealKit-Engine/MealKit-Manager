@@ -7,10 +7,12 @@
 #                                                                            into To (%LOCALAPPDATA%\MealKit\manager) and makes the shortcuts
 #   install.ps1 shortcuts -To <folder>                                     → Start menu + desktop shortcuts to <To>\MealKitManager.exe
 #                                                                            (only the Manager gets shortcuts: engine docs/DECISIONS.md "How the Manager installs")
+#   install.ps1 check                                                      → compiler<TAB>ok|missing<TAB><Visual Studio folder>
+#                                                                            dxc<TAB>ok|missing<TAB><dxc.exe>
 # MEALKIT_SHORTCUT_DIR puts both shortcuts in that folder instead (tests).
 # The index is engine tools\release_index.ps1's format 1. url may be http(s), file:/// or a plain path (local tests).
 param(
-    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine", "self", "shortcuts")][string]$Command,
+    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine", "self", "shortcuts", "check")][string]$Command,
     [string]$Index = "",
     [string]$Version = "",
     [string]$Root = "",
@@ -56,6 +58,21 @@ function Make-Shortcuts([string]$to) {
     Make-Shortcut ([Environment]::GetFolderPath("DesktopDirectory")) $exe
 }
 
+if ($Command -eq "check") {
+    # The same lookup the engine's tools\build.ps1 does (vswhere, the VC x64 tools component). MEALKIT_VSWHERE overrides vswhere (tests)
+    $vswhere = if ($env:MEALKIT_VSWHERE) { $env:MEALKIT_VSWHERE } else { Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe" }
+    $vs = ""
+    if (Test-Path $vswhere) {
+        $vs = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1)
+        if (-not $vs -or -not (Test-Path (Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"))) { $vs = "" }
+    }
+    Write-Output ("compiler`t{0}`t{1}" -f $(if ($vs) { "ok" } else { "missing" }), $vs)
+    # DXC: the engine's cmake/Dxc.cmake downloads it here on the first build
+    $dxc = Get-ChildItem (Join-Path $env:LOCALAPPDATA "MealKit\tools") -Directory -Filter "dxc-*" -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName "bin\x64\dxc.exe" } | Where-Object { Test-Path $_ } | Select-Object -Last 1
+    Write-Output ("dxc`t{0}`t{1}" -f $(if ($dxc) { "ok" } else { "missing" }), $dxc)
+    exit 0
+}
 if ($Command -eq "shortcuts" -or $Command -eq "self") {
     if (-not $To) { Fail "$Command needs -To" }
     if ($Command -eq "self") {

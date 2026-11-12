@@ -64,6 +64,13 @@ private:
     bool m_jobListsReleases = false;
     bool m_jobInstallsEngine = false;
 
+    // C++ compiler and DXC on this PC (install.ps1 check, once at start and on [Check Again])
+    Toolchain m_toolchain;
+    bool m_toolchainRequested = false;
+    bool m_jobChecksToolchain = false;
+    void toolchainBanner();
+    void toolchainLine();
+
     // [Modules] tab: modules of the selected project and the registry (engine tools\module.ps1 search -Tsv)
     ModuleList m_modules;
     std::string m_modulesFor;      // project folder the list was fetched for (refetched if different)
