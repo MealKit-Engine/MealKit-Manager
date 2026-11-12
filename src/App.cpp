@@ -222,7 +222,13 @@ std::string App::iconLabel(const char* glyph, const char* label) const {
 bool App::iconButton(const char* glyph, const std::string& name, bool small, const char* detail, const std::string& suffix) {
     std::string label = iconFont ? std::string(glyph) + (suffix.empty() ? "" : " " + suffix) : name;
     label += "##" + name;
+    // Flat like the editor's icon buttons: clear until hovered
+    if (iconFont) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
+    }
     const bool pressed = small ? ImGui::SmallButton(label.c_str()) : ImGui::Button(label.c_str());
+    if (iconFont) ImGui::PopStyleColor(2);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) {
         if (detail) ImGui::SetTooltip("%s\n%s", name.c_str(), detail);
         else if (iconFont) ImGui::SetTooltip("%s", name.c_str());
@@ -954,10 +960,9 @@ void App::statusBar() {
     else ImGui::TextUnformatted(m_status.c_str());
     if (!m_jobOutput.empty()) {
         ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.75f, 0.28f, 0.28f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.4f, 1.0f)); // the failure's output, in the error color
         const bool show = iconButton(kIconOutput, tr("Output"), true);
-        ImGui::PopStyleColor(2);
+        ImGui::PopStyleColor();
         if (show) ImGui::OpenPopup("##output");
         if (ImGui::BeginPopup("##output")) {
             if (iconButton(kIconCopy, tr("Copy"), true)) SDL_SetClipboardText(m_jobOutput.c_str());
