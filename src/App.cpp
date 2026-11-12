@@ -104,6 +104,11 @@ void App::frame() {
         m_toolchainRequested = true;
         if (m_job.start(tr("Toolchain check"), powershellArgs(installerScript(), {"check"}))) m_jobChecksToolchain = true;
     }
+    // Release list at start too: the [Projects] tab offers the engine a project is missing
+    if (!m_releasesFetched && !m_job.running() && !releaseIndex().empty()) {
+        m_releasesFetched = true;
+        if (m_job.start(tr("Engine list"), powershellArgs(installerScript(), {"list", "-Index", releaseIndex()}))) m_jobListsReleases = true;
+    }
     drawWindow();
 }
 
@@ -242,9 +247,13 @@ void App::projectsTab() {
             ImGui::TextDisabled("%s", p.directory.c_str());
 
             ImGui::TableNextColumn();
-            const Engine* engine = m_catalog.engineFor(p);
+            bool byVersion = false;
+            const Engine* engine = m_catalog.engineFor(p, &byVersion);
+            const Release* release = engine ? nullptr : Catalog::releaseFor(p, m_releases);
             if (!p.valid) ImGui::TextDisabled("-");
+            else if (!engine && release) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s", trf("%s not installed", release->version.c_str()).c_str());
             else if (!engine) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", tr("engine not found"));
+            else if (byVersion) ImGui::Text("%s%s", engine->version.c_str(), tr(" (installed here)"));
             else if (m_catalog.needsUpgrade(p))
                 ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s -> %s", p.engineVersion.c_str(), engine->version.c_str());
             else ImGui::Text("%s%s", engine->version.c_str(), p.engine.empty() ? tr(" (engine sample)") : "");
@@ -258,7 +267,13 @@ void App::projectsTab() {
 
     // Actions for the selected project
     ImGui::BeginDisabled(!selected || busy);
-    if (ImGui::Button(tr("Open in Editor")) && selected) openProject(*selected);
+    const Release* missing = selected && !m_catalog.engineFor(*selected) ? Catalog::releaseFor(*selected, m_releases) : nullptr;
+    if (missing) {
+        // The project's engine isn't on this PC but the release index has its MINOR: install it, then [Open in Editor] finds it by version
+        if (ImGui::Button(trf("Install Engine %s", missing->version.c_str()).c_str())) installEngine(*missing);
+    } else if (ImGui::Button(tr("Open in Editor")) && selected) {
+        openProject(*selected);
+    }
     ImGui::SameLine();
     const bool upgrade = selected && m_catalog.needsUpgrade(*selected);
     ImGui::BeginDisabled(!upgrade);
@@ -321,11 +336,7 @@ void App::enginesTab() {
         ImGui::TextDisabled("%s", tr("No release index yet (MEALKIT_RELEASE_INDEX)."));
         return;
     }
-    if (!m_releasesFetched && !m_job.running()) {
-        m_releasesFetched = true;
-        if (m_job.start(tr("Engine list"), powershellArgs(installerScript(), {"list", "-Index", index}))) m_jobListsReleases = true;
-    }
-    if (m_jobListsReleases) {
+    if (m_jobListsReleases || !m_releasesFetched) {
         ImGui::TextDisabled("%s", tr("Reading..."));
         return;
     }
@@ -352,14 +363,7 @@ void App::enginesTab() {
             if (m_catalog.hasEngineVersion(r.version)) ImGui::TextUnformatted(tr("installed"));
             else {
                 ImGui::BeginDisabled(m_job.running());
-                if (ImGui::SmallButton(tr("Install")) &&
-                    m_job.start(trf("Install engine %s", r.version.c_str()),
-                                powershellArgs(installerScript(), {"engine", "-Index", index, "-Version", r.version, "-Root", enginesRoot()}))) {
-                    m_jobInstallsEngine = true;
-                    m_status = trf("Installing engine %s...", r.version.c_str());
-                    m_statusError = false;
-                    m_jobOutput.clear();
-                }
+                if (ImGui::SmallButton(tr("Install"))) installEngine(r);
                 ImGui::EndDisabled();
             }
             ImGui::PopID();
@@ -660,8 +664,19 @@ void App::statusBar() {
     }
 }
 
+void App::installEngine(const Release& release) {
+    if (!m_job.start(trf("Install engine %s", release.version.c_str()),
+                     powershellArgs(installerScript(), {"engine", "-Index", releaseIndex(), "-Version", release.version, "-Root", enginesRoot()})))
+        return;
+    m_jobInstallsEngine = true;
+    m_status = trf("Installing engine %s...", release.version.c_str());
+    m_statusError = false;
+    m_jobOutput.clear();
+}
+
 void App::openProject(const Project& project) {
-    const Engine* engine = m_catalog.engineFor(project);
+    bool byVersion = false;
+    const Engine* engine = m_catalog.engineFor(project, &byVersion);
     if (!engine) {
         m_status = trf("The engine of %s was not found: %s", project.name.c_str(), project.engine.c_str());
         m_statusError = true;
@@ -672,6 +687,16 @@ void App::openProject(const Project& project) {
         m_statusError = true;
         return;
     }
+    // Found by version: point the engine line at this PC's engine, since the project's build.bat builds with that folder
+    std::string repointed;
+    if (byVersion) {
+        if (!setProjectEngine(project.directory, engine->directory)) {
+            m_status = trf("Cannot update the engine line of %s", project.name.c_str());
+            m_statusError = true;
+            return;
+        }
+        repointed = trf(" (engine line now %s)", engine->directory.c_str());
+    }
     std::string error;
     if (!launchDetached({engine->editorExe, "--project", project.directory}, error)) {
         m_status = trf("Cannot start the editor: %s", error.c_str());
@@ -679,7 +704,7 @@ void App::openProject(const Project& project) {
         return;
     }
     m_catalog.addRecent(project.directory); // the editor adds it too when opening, but this fixes the list order right away
-    m_status = trf("Opened %s", project.name.c_str());
+    m_status = trf("Opened %s", project.name.c_str()) + repointed;
     m_statusError = false;
     reload();
 }

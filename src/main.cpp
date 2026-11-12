@@ -116,10 +116,15 @@ int openProject(const mkmanager::Catalog& catalog, const std::string& directory)
         std::printf("%s has no mealkit.project\n", directory.c_str());
         return 1;
     }
-    const mkmanager::Engine* engine = catalog.engineFor(project);
+    bool byVersion = false;
+    const mkmanager::Engine* engine = catalog.engineFor(project, &byVersion);
     if (!engine || engine->editorExe.empty()) {
         std::printf("engine of %s not found or its editor is not built\n", project.name.c_str());
         return 1;
+    }
+    if (byVersion) { // same as the screen: the engine line follows the engine found by version
+        if (!mkmanager::setProjectEngine(project.directory, engine->directory)) return 1;
+        std::printf("engine line of %s now %s\n", project.name.c_str(), engine->directory.c_str());
     }
     std::string error;
     if (!mkmanager::launchDetached({engine->editorExe, "--project", project.directory}, error)) {

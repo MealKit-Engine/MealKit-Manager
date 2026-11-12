@@ -165,6 +165,47 @@ void testModuleList() {
 
 } // namespace
 
+// A project from another PC (its engine line points nowhere here) gets an installed engine of the same MINOR (engine ROADMAP R2)
+void testEngineMatching(const fs::path& root) {
+    const fs::path user = root / "user2", e92 = root / "engines" / "0.9.2", e95 = root / "engines" / "0.9.5";
+    for (const auto& [dir, v] : {std::pair{e92, "0.9.2"}, std::pair{e95, "0.9.5"}}) {
+        write(dir / "VERSION", std::string(v) + "\n");
+        write(dir / "tools" / "new_project.ps1", "#\n");
+    }
+    auto project = [&](const char* name, const char* version) {
+        const fs::path dir = root / "shared" / name;
+        write(dir / "mealkit.project", std::string("@format project 1\r\nname ") + name + "\r\nengine D:\\Other\\PC\\MealKit\r\nengineVersion " +
+                                           version + "\r\n");
+        return dir;
+    };
+    const fs::path exact = project("Exact", "0.9.2"), newer = project("Newer", "0.9.1"), none = project("None", "0.8.3");
+    write(user / "recent_projects.txt", str(exact) + "\n" + str(newer) + "\n" + str(none) + "\n");
+    write(user / "engines.txt", str(e92) + "\n" + str(e95) + "\n");
+    setUserDirectory(user);
+    Catalog catalog;
+    catalog.load();
+    CHECK(catalog.engines().size() == 2 && catalog.projects().size() == 3);
+    if (catalog.projects().size() != 3) return;
+    bool byVersion = false;
+    const Engine* a = catalog.engineFor(catalog.projects()[0], &byVersion);
+    CHECK(a && a->version == "0.9.2" && byVersion); // exact version wins over the newer patch
+    const Engine* b = catalog.engineFor(catalog.projects()[1], &byVersion);
+    CHECK(b && b->version == "0.9.5" && byVersion); // else the newest patch
+    CHECK(!catalog.engineFor(catalog.projects()[2], &byVersion) && !byVersion);
+    const std::vector<Release> releases = {{"0.9.6", "u", "s", 1}, {"0.8.4", "u", "s", 1}};
+    const Release* r = Catalog::releaseFor(catalog.projects()[2], releases);
+    CHECK(r && r->version == "0.8.4");
+
+    CHECK(minorOf("0.9.12") == "0.9" && minorOf("x").empty() && versionLess("0.9.9", "0.9.10") && !versionLess("0.9.10", "0.9.9"));
+    CHECK(setProjectEngine(str(none), str(e95)));
+    Project p;
+    readProject(str(none), p);
+    CHECK(p.engine == str(e95) && p.engineVersion == "0.8.3" && p.name == "None");
+    std::string text;
+    mkcontract::readFile(str(none / "mealkit.project"), text);
+    CHECK(text.find("\r\nengineVersion") != std::string::npos); // line endings kept
+}
+
 // install.ps1 list / engine output (engine ROADMAP R2)
 void testReleases() {
     const std::vector<Release> list = parseReleaseList(
@@ -193,6 +234,7 @@ int main() {
     testTranslations();
     testModuleList();
     testReleases();
+    testEngineMatching(root);
     fs::remove_all(root, ec);
     std::printf(g_failures ? "FAILED (%d)\n" : "PASS\n", g_failures);
     return g_failures ? 1 : 0;

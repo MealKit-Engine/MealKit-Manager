@@ -42,6 +42,7 @@ private:
     void newProjectPopup();
     void statusBar();
     void openProject(const Project& project);
+    void installEngine(const Release& release);
     void runScript(const std::string& label, const std::string& script, const std::vector<std::string>& args,
                    const std::string& addOnSuccess = {});
     void pickFolder(int purpose); // 0 = import project, 1 = add engine, 2 = new project location

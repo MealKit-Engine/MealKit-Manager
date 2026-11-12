@@ -70,6 +70,53 @@ std::string installedFolder(const std::string& output) {
     return folder;
 }
 
+namespace {
+std::vector<int> versionParts(const std::string& version) {
+    std::vector<int> parts;
+    size_t start = 0;
+    while (start <= version.size()) {
+        const size_t dot = version.find('.', start);
+        const std::string part = version.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+        if (part.empty() || part.find_first_not_of("0123456789") != std::string::npos) return {};
+        parts.push_back(std::atoi(part.c_str()));
+        if (dot == std::string::npos) break;
+        start = dot + 1;
+    }
+    return parts;
+}
+} // namespace
+
+std::string minorOf(const std::string& version) {
+    const std::vector<int> p = versionParts(version);
+    if (p.size() < 2) return {};
+    return std::to_string(p[0]) + "." + std::to_string(p[1]);
+}
+
+bool versionLess(const std::string& a, const std::string& b) { return versionParts(a) < versionParts(b); }
+
+bool setProjectEngine(const std::string& projectDirectory, const std::string& engineDirectory) {
+    const std::string file = joinPath(projectDirectory, "mealkit.project");
+    std::string text;
+    if (!mkcontract::readFile(file, text)) return false;
+    const bool crlf = text.find("\r\n") != std::string::npos;
+    const char* eol = crlf ? "\r\n" : "\n";
+    std::string out;
+    bool replaced = false;
+    for (const std::string& line : lines(text)) {
+        const size_t start = line.find_first_not_of(" \t\xEF\xBB\xBF");
+        const bool isEngine = start != std::string::npos && line.compare(start, 6, "engine") == 0 && line.size() > start + 6 &&
+                              (line[start + 6] == ' ' || line[start + 6] == '\t');
+        if (isEngine && !replaced) {
+            out += line.substr(0, start) + "engine " + engineDirectory + eol;
+            replaced = true;
+        } else {
+            out += line + eol;
+        }
+    }
+    if (!replaced) out += "engine " + engineDirectory + eol;
+    return mkcontract::writeFile(file, out);
+}
+
 Toolchain parseToolchain(const std::string& output) {
     Toolchain t;
     for (const std::string& line : lines(output)) {
@@ -160,10 +207,30 @@ void Catalog::load(const std::string& extraEngine) {
     if (!language.empty()) m_language = language;
 }
 
-const Engine* Catalog::engineFor(const Project& project) const {
+const Engine* Catalog::engineFor(const Project& project, bool* byVersion) const {
+    if (byVersion) *byVersion = false;
     for (const std::string& dir : engineCandidates(project))
         for (const Engine& e : m_engines)
             if (sameDirectory(e.directory, dir)) return &e;
+    // Only for a project with an engine line (not the engine repo's samples) whose folder isn't an engine on this PC
+    if (project.engine.empty() || minorOf(project.engineVersion).empty()) return nullptr;
+    Engine there;
+    if (readEngine(project.engine, there)) return nullptr; // an engine is there, just not in the list yet
+    const Engine* best = nullptr;
+    for (const Engine& e : m_engines) {
+        if (minorOf(e.version) != minorOf(project.engineVersion)) continue;
+        if (e.version == project.engineVersion) { best = &e; break; }
+        if (!best || versionLess(best->version, e.version)) best = &e;
+    }
+    if (best && byVersion) *byVersion = true;
+    return best;
+}
+
+const Release* Catalog::releaseFor(const Project& project, const std::vector<Release>& releases) {
+    const std::string minor = minorOf(project.engineVersion);
+    if (minor.empty()) return nullptr;
+    for (const Release& r : releases) // the index keeps one patch per MINOR
+        if (minorOf(r.version) == minor) return &r;
     return nullptr;
 }
 

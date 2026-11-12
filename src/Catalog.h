@@ -79,6 +79,13 @@ Toolchain parseToolchain(const std::string& output);
 inline constexpr const char* kBuildToolsWinget =
     "winget install Microsoft.VisualStudio.2022.BuildTools --override \"--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\"";
 
+// "0.9.4" → "0.9" (blank if not a version)
+std::string minorOf(const std::string& version);
+// true if version a < b, comparing the numbers
+bool versionLess(const std::string& a, const std::string& b);
+// Points the project's engine line at this folder (the project's build.bat reads it); other lines are kept
+bool setProjectEngine(const std::string& projectDirectory, const std::string& engineDirectory);
+
 bool readProject(const std::string& directory, Project& out);
 bool readEngine(const std::string& directory, Engine& out);
 
@@ -93,7 +100,11 @@ public:
     const std::string& language() const { return m_language; }
 
     // Engine that opens the project: the folder in the engine line, or if absent the project folder or its nearest parent that is an engine (engine repo and its samples). nullptr if not found
-    const Engine* engineFor(const Project& project) const;
+    // When the engine line's folder isn't an engine here (a project made on another PC), an engine of the same MINOR as engineVersion:
+    // that exact version, else the newest patch (engine docs/DECISIONS.md "How the Manager installs"). byVersion is set then.
+    const Engine* engineFor(const Project& project, bool* byVersion = nullptr) const;
+    // Engine in the release list for a project whose engine wasn't found (same MINOR as engineVersion). nullptr if none
+    static const Release* releaseFor(const Project& project, const std::vector<Release>& releases);
     // Whether it needs upgrading to this engine (project engineVersion != engine VERSION)
     bool needsUpgrade(const Project& project) const;
     // Whether an engine of this version is already in the list
