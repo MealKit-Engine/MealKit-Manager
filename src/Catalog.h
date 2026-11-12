@@ -59,6 +59,20 @@ struct Release {
 };
 // "engine<TAB>version<TAB>size<TAB>url<TAB>sha256" lines; other lines are skipped
 std::vector<Release> parseReleaseList(const std::string& output);
+// A tool in the release index: its live protocol and the engine MINORs it works with (engine docs/DECISIONS.md "How the Manager installs")
+struct ToolRelease {
+    std::string name;
+    std::string version;
+    std::string url;
+    std::string sha256;
+    unsigned long long size = 0;
+    uint32_t protocol = 0;
+    std::vector<std::string> engines; // "0.9"
+};
+// "tool<TAB>name<TAB>version<TAB>size<TAB>url<TAB>sha256<TAB>protocol<TAB>engines" lines (engines comma separated)
+std::vector<ToolRelease> parseToolReleases(const std::string& output);
+// Where installed tools go: <user folder>\tools\<tool> (where the editor's [Tools] menu and this Manager look)
+std::string toolsRoot();
 // The index's MealKit Manager entry, "manager<TAB>version<TAB>size<TAB>url<TAB>sha256" (version blank if none)
 Release parseManagerRelease(const std::string& output);
 // Folder from the "installed<TAB><folder>" line of install.ps1 engine (blank if none)
@@ -111,6 +125,10 @@ public:
     bool needsUpgrade(const Project& project) const;
     // Whether an engine of this version is already in the list
     bool hasEngineVersion(const std::string& version) const;
+    // A tool release is offered when it speaks this Manager's live protocol and works with an engine in the list
+    bool toolMatches(const ToolRelease& tool) const;
+    // The installed tool of that name (nullptr if none)
+    const Tool* installedTool(const std::string& name) const;
 
     void addRecent(const std::string& directory);    // to the top of the list
     void removeRecent(const std::string& directory); // removed only from the list (the folder stays)

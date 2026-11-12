@@ -1,9 +1,9 @@
 // MealKit Manager executable: SDL3 window + SDL_Renderer + Dear ImGui (same framework as the MkAudio tool). The actual screen is App.
-//   MealKitManager [--engine <engine folder>] [--lang ko|en] [--modules <project folder>] [--frames N --capture <png>]   (--modules: start on the [Modules] tab, --engines: on the [Engines] tab)
+//   MealKitManager [--engine <engine folder>] [--lang ko|en] [--modules <project folder>] [--frames N --capture <png>]   (--modules: start on the [Modules] tab, --engines / --tools: on that tab)
 //   MealKitManager --list      prints project/engine/tool lists without a window (for tests/scripts)
 //   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty]   new project without a window (same script as the screen's [New Project])
 //   MealKitManager --open <project folder>                         opens that project in its engine's editor without a window
-//   MealKitManager --releases | --install-engine <version>             engines in the release index (MEALKIT_RELEASE_INDEX) / install one
+//   MealKitManager --releases | --install-engine <version> | --install-tool <name>   the release index (MEALKIT_RELEASE_INDEX) / install from it
 //   (run from a downloaded package, with SETUP beside the exe)          installs itself with shortcuts and starts the installed copy (--no-launch: doesn't start it)
 //   MealKitManager --uninstall [--yes]                                 remove the installed Manager, its shortcuts and its Installed apps entry
 //   MealKitManager --version
@@ -144,7 +144,7 @@ int openProject(const mkmanager::Catalog& catalog, const std::string& directory)
 }
 
 // --releases / --install-engine <version>: same as the [Engines] tab's install list and [Install] (scripts\install.ps1 beside the exe)
-int installCommand(const std::string& version) {
+int installCommand(const std::string& version, const std::string& tool) {
     const std::string index = mkmanager::releaseIndex();
     if (index.empty()) {
         std::printf("No release index yet (set MEALKIT_RELEASE_INDEX)\n");
@@ -153,14 +153,21 @@ int installCommand(const std::string& version) {
     const char* base = SDL_GetBasePath();
     const std::string script = std::string(base ? base : "") + "install.ps1";
     std::vector<std::string> args = {"list", "-Index", index};
-    if (!version.empty()) args = {"engine", "-Index", index, "-Version", version, "-Root", mkmanager::enginesRoot()};
+    if (!tool.empty()) args = {"tool", "-Index", index, "-Name", tool, "-Root", mkmanager::toolsRoot()};
+    else if (!version.empty()) args = {"engine", "-Index", index, "-Version", version, "-Root", mkmanager::enginesRoot()};
     mkmanager::Job job;
     job.start("install", mkmanager::powershellArgs(script, args));
     while (!job.takeFinished()) SDL_Delay(50);
+    if (!tool.empty()) {
+        std::printf("%s", job.output().c_str());
+        return job.exitCode();
+    }
     if (version.empty()) {
         if (job.exitCode() != 0) std::printf("%s", job.output().c_str());
         for (const mkmanager::Release& r : mkmanager::parseReleaseList(job.output()))
             std::printf("release: %s %llu %s\n", r.version.c_str(), r.size, r.url.c_str());
+        for (const mkmanager::ToolRelease& t : mkmanager::parseToolReleases(job.output()))
+            std::printf("tool: %s %s protocol %u\n", t.name.c_str(), t.version.c_str(), t.protocol);
         return job.exitCode();
     }
     std::printf("%s", job.output().c_str());
@@ -295,8 +302,8 @@ bool onSomeDisplay(const Placement& p) {
 int main(int argc, char** argv) {
     std::string engine, capture, language, newName, newPath, newTemplate, open, modules;
     long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
-    bool list = false, releases = false, enginesTab = false, noLaunch = false, uninstall = false, assumeYes = false;
-    std::string installVersion;
+    bool list = false, releases = false, enginesTab = false, toolsTab = false, noLaunch = false, uninstall = false, assumeYes = false;
+    std::string installVersion, installTool;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--engine") == 0 && i + 1 < argc) engine = argv[++i];
         else if (std::strcmp(argv[i], "--new") == 0 && i + 1 < argc) newName = argv[++i];
@@ -310,10 +317,12 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--list") == 0) list = true;
         else if (std::strcmp(argv[i], "--releases") == 0) releases = true;
         else if (std::strcmp(argv[i], "--engines") == 0) enginesTab = true;
+        else if (std::strcmp(argv[i], "--tools") == 0) toolsTab = true;
         else if (std::strcmp(argv[i], "--no-launch") == 0) noLaunch = true;
         else if (std::strcmp(argv[i], "--uninstall") == 0) uninstall = true;
         else if (std::strcmp(argv[i], "--yes") == 0) assumeYes = true;
         else if (std::strcmp(argv[i], "--install-engine") == 0 && i + 1 < argc) installVersion = argv[++i];
+        else if (std::strcmp(argv[i], "--install-tool") == 0 && i + 1 < argc) installTool = argv[++i];
         else if (std::strcmp(argv[i], "--version") == 0) {
             std::printf("MealKit Manager %s\n", MKMANAGER_VERSION);
             return 0;
@@ -321,7 +330,7 @@ int main(int argc, char** argv) {
     }
     if (uninstall) return uninstallManager(assumeYes);
     removeOldExe();
-    if (releases || !installVersion.empty()) return installCommand(installVersion);
+    if (releases || !installVersion.empty() || !installTool.empty()) return installCommand(installVersion, installTool);
     if (frames == 0 && !list && newName.empty() && open.empty()) {
         const int setup = setupFromPackage(!noLaunch);
         if (setup >= 0) return setup;
@@ -387,6 +396,7 @@ int main(int argc, char** argv) {
     if (!language.empty()) mkmanager::setLanguage(language);
     if (!modules.empty()) app.showModulesTab(modules);
     if (enginesTab) app.showEnginesTab();
+    if (toolsTab) app.showToolsTab();
 
     long frame = 0;
     for (bool running = true; running;) {

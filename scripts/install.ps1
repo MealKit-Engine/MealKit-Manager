@@ -3,6 +3,10 @@
 #   install.ps1 list   -Index <url|path>                                   → one line per engine: engine<TAB>version<TAB>size<TAB>url<TAB>sha256
 #   install.ps1 engine -Index <url|path> -Version <x.y.z> -Root <engines>  → downloads, checks the SHA-256, extracts to <Root>\<version>,
 #                                                                            last line: installed<TAB><folder>
+#                                                                            also tool<TAB>name<TAB>version<TAB>size<TAB>url<TAB>sha256<TAB>protocol<TAB>engines,
+#                                                                            manager<TAB>version<TAB>size<TAB>url<TAB>sha256
+#   install.ps1 tool -Index <url|path> -Name <tool> -Root <tools>         → installs or updates <Root>\<tool> (refused while it or the editor runs),
+#                                                                            last line: installed<TAB><folder>
 #   install.ps1 self -From <folder> -To <folder>                           → copies the Manager (exe, this script) from a downloaded package
 #                                                                            into To (%LOCALAPPDATA%\MealKit\manager) and makes the shortcuts
 #   install.ps1 shortcuts -To <folder>                                     → Start menu + desktop shortcuts to <To>\MealKitManager.exe
@@ -17,7 +21,8 @@
 # MEALKIT_SHORTCUT_DIR puts both shortcuts in that folder instead, MEALKIT_UNINSTALL_KEY renames the uninstall entry (tests).
 # The index is engine tools\release_index.ps1's format 1. url may be http(s), file:/// or a plain path (local tests).
 param(
-    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine", "self", "shortcuts", "check", "update", "uninstall")][string]$Command,
+    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine", "tool", "self", "shortcuts", "check", "update", "uninstall")][string]$Command,
+    [string]$Name = "",
     [string]$Index = "",
     [string]$Version = "",
     [string]$Root = "",
@@ -140,6 +145,37 @@ try {
     $engines = @($data.engines)
 
     $mgr = $data.manager
+    if ($Command -eq "tool") {
+        if (-not $Name -or -not $Root) { Fail "tool needs -Name and -Root" }
+        $entry = @($data.tools) | Where-Object { $_ -and $_.name -eq $Name } | Select-Object -First 1
+        if (-not $entry) { Fail "Tool $Name is not in the release index." }
+        $target = Join-Path $Root $Name
+        # Applied only once the tool and the editor are closed (engine docs/DECISIONS.md "How the Manager installs"): files in use can't be replaced
+        $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $p = $null; try { $p = $_.Path } catch {}
+            $p -and ($p.StartsWith($target + "\", [StringComparison]::OrdinalIgnoreCase) -or $_.ProcessName -eq "MealKitEditor") })
+        if ($running.Count) { Fail ("Close {0} first: {1} is running." -f $(if ($running[0].ProcessName -eq "MealKitEditor") { "the editor" } else { $Name }), $running[0].ProcessName) }
+        $zip = Join-Path $temp "tool.zip"
+        Write-Host "[MealKit] Downloading $Name $($entry.version)"
+        try { Fetch $entry.url $zip } catch { Fail "Download failed: $($_.Exception.Message)" }
+        $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+        if ($hash -ne $entry.sha256.ToLower()) { Fail "The download doesn't match the release index (SHA-256 $hash). Nothing was installed." }
+        New-Item -ItemType Directory -Force $Root | Out-Null
+        $staging = Join-Path $Root ".installing-$Name"
+        if (Test-Path $staging) { Remove-Item -Recurse -Force $staging }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [IO.Compression.ZipFile]::ExtractToDirectory($zip, $staging)
+        if (-not (Test-Path (Join-Path $staging "mealkit-tool.txt"))) { Remove-Item -Recurse -Force $staging; Fail "The package has no mealkit-tool.txt: not a tool package." }
+        # Swap folders: the old one goes aside first, so a failure leaves the installed version working
+        $old = Join-Path $Root ".old-$Name"
+        if (Test-Path $old) { Remove-Item -Recurse -Force $old }
+        if (Test-Path $target) { Rename-Item $target (Split-Path $old -Leaf) }
+        try { Rename-Item $staging $Name }
+        catch { if (Test-Path $old) { Rename-Item $old $Name }; Fail "Could not put $Name in place: $($_.Exception.Message)" }
+        if (Test-Path $old) { Remove-Item -Recurse -Force $old -ErrorAction SilentlyContinue }
+        Write-Output "installed`t$target"
+        exit 0
+    }
     if ($Command -eq "update") {
         if (-not $To) { Fail "update needs -To" }
         if (-not $mgr) { Fail "The release index has no MealKit Manager entry." }
@@ -172,6 +208,9 @@ try {
 
     if ($Command -eq "list") {
         if ($mgr) { Write-Output ("manager`t{0}`t{1}`t{2}`t{3}" -f $mgr.version, $mgr.size, $mgr.url, $mgr.sha256) }
+        foreach ($t in @($data.tools)) {
+            if ($t) { Write-Output ("tool`t{0}`t{1}`t{2}`t{3}`t{4}`t{5}`t{6}" -f $t.name, $t.version, $t.size, $t.url, $t.sha256, $t.protocol, (@($t.engines) -join ",")) }
+        }
         foreach ($e in $engines) { Write-Output ("engine`t{0}`t{1}`t{2}`t{3}" -f $e.version, $e.size, $e.url, $e.sha256) }
         exit 0
     }

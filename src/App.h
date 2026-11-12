@@ -28,9 +28,11 @@ public:
 
     // Start on the [Engines] tab (--engines: screen check)
     void showEnginesTab() { m_openEnginesTab = true; }
+    void showToolsTab() { m_openToolsTab = true; }
 
 private:
     bool m_openEnginesTab = false;
+    bool m_openToolsTab = false;
     void reload();
     void finishJob();
     void drawWindow();
@@ -66,6 +68,7 @@ private:
     bool m_jobListsReleases = false;
     bool m_jobInstallsEngine = false;
     Release m_managerRelease; // the index's Manager entry (update check)
+    std::vector<ToolRelease> m_toolReleases; // the index's tools ([Tools] tab)
     bool m_jobUpdatesManager = false;
 
     // C++ compiler and DXC on this PC (install.ps1 check, once at start and on [Check Again])

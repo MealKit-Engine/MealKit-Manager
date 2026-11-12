@@ -63,6 +63,33 @@ std::vector<Release> parseReleaseList(const std::string& output) {
     return out;
 }
 
+std::vector<ToolRelease> parseToolReleases(const std::string& output) {
+    std::vector<ToolRelease> out;
+    for (const std::string& line : lines(output)) {
+        const std::vector<std::string> f = splitTabs(line);
+        if (f.size() < 8 || f[0] != "tool" || f[1].empty() || f[2].empty() || f[4].empty()) continue;
+        ToolRelease t;
+        t.name = f[1];
+        t.version = f[2];
+        t.size = std::strtoull(f[3].c_str(), nullptr, 10);
+        t.url = f[4];
+        t.sha256 = f[5];
+        t.protocol = static_cast<uint32_t>(std::strtoul(f[6].c_str(), nullptr, 10));
+        size_t start = 0;
+        while (start <= f[7].size()) {
+            const size_t comma = f[7].find(',', start);
+            const std::string minor = f[7].substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+            if (!minor.empty()) t.engines.push_back(minor);
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        out.push_back(std::move(t));
+    }
+    return out;
+}
+
+std::string toolsRoot() { return joinPath(userDirectory(), "tools"); }
+
 Release parseManagerRelease(const std::string& output) {
     for (const std::string& line : lines(output)) {
         const std::vector<std::string> f = splitTabs(line);
@@ -251,6 +278,19 @@ bool Catalog::needsUpgrade(const Project& project) const {
 
 bool Catalog::hasEngineVersion(const std::string& version) const {
     return std::any_of(m_engines.begin(), m_engines.end(), [&](const Engine& e) { return e.version == version; });
+}
+
+bool Catalog::toolMatches(const ToolRelease& tool) const {
+    if (tool.protocol != kLiveProtocol) return false;
+    for (const Engine& e : m_engines)
+        if (std::find(tool.engines.begin(), tool.engines.end(), minorOf(e.version)) != tool.engines.end()) return true;
+    return false;
+}
+
+const Tool* Catalog::installedTool(const std::string& name) const {
+    for (const Tool& t : m_tools)
+        if (t.name == name) return &t;
+    return nullptr;
 }
 
 void Catalog::addRecent(const std::string& directory) { mkcontract::addRecentProject(directory); }

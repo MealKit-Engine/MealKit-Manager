@@ -196,6 +196,17 @@ void testEngineMatching(const fs::path& root) {
     const Release* r = Catalog::releaseFor(catalog.projects()[2], releases);
     CHECK(r && r->version == "0.8.4");
 
+    const std::vector<ToolRelease> tools = parseToolReleases(
+        "tool\tMkUI\t0.4.0\t900\thttps://x/t.zip\tab\t1\t0.9,0.10\r\ntool\tOld\t0.1.0\t1\tu\ts\t1\t0.7\ntool\tFuture\t2.0.0\t1\tu\ts\t9\t0.9\n");
+    CHECK(tools.size() == 3);
+    if (tools.size() == 3) {
+        CHECK(tools[0].name == "MkUI" && tools[0].version == "0.4.0" && tools[0].size == 900ull && tools[0].protocol == 1u);
+        CHECK(tools[0].engines.size() == 2 && tools[0].engines[1] == "0.10");
+        CHECK(catalog.toolMatches(tools[0]));  // engine 0.9.x is installed
+        CHECK(!catalog.toolMatches(tools[1])); // only for 0.7
+        CHECK(!catalog.toolMatches(tools[2])); // another live protocol
+    }
+
     CHECK(minorOf("0.9.12") == "0.9" && minorOf("x").empty() && versionLess("0.9.9", "0.9.10") && !versionLess("0.9.10", "0.9.9"));
     CHECK(setProjectEngine(str(none), str(e95)));
     Project p;

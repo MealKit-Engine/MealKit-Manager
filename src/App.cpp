@@ -92,6 +92,7 @@ void App::frame() {
             m_jobListsReleases = false;
             m_releases = parseReleaseList(m_job.output());
             m_managerRelease = parseManagerRelease(m_job.output());
+            m_toolReleases = parseToolReleases(m_job.output());
             m_releasesError = m_job.exitCode() != 0 ? m_job.output() : std::string();
         } else if (m_jobListsModules) { // module list: the status line stays and it shows in the [Modules] tab
             m_jobListsModules = false;
@@ -194,7 +195,9 @@ void App::drawWindow() {
             ImGui::EndTabItem();
         }
         m_openEnginesTab = false;
-        if (ImGui::BeginTabItem(tr("Tools"))) {
+        const bool selectTools = m_openToolsTab;
+        m_openToolsTab = false;
+        if (ImGui::BeginTabItem(tr("Tools"), nullptr, selectTools ? ImGuiTabItemFlags_SetSelected : 0)) {
             toolsTab();
             ImGui::EndTabItem();
         }
@@ -584,6 +587,48 @@ void App::toolsTab() {
         ImGui::EndTable();
     }
     if (m_catalog.tools().empty()) ImGui::TextDisabled("%s", tr("No tools installed."));
+
+    // Tools in the release index. Offered only when they match an installed engine; an update waits until the tool and the editor are closed
+    if (releaseIndex().empty() || m_toolReleases.empty()) return;
+    ImGui::Spacing();
+    ImGui::SeparatorText(tr("Install"));
+    if (ImGui::BeginTable("##toolreleases", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn(tr("Tool"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn(tr("Version"), ImGuiTableColumnFlags_WidthStretch, 0.6f);
+        ImGui::TableSetupColumn(tr("Works with"), ImGuiTableColumnFlags_WidthStretch, 2.0f);
+        ImGui::TableSetupColumn("##install", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Update to 0.00.00").x * 1.3f);
+        ImGui::TableHeadersRow();
+        for (const ToolRelease& r : m_toolReleases) {
+            ImGui::PushID(r.name.c_str());
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(r.name.c_str());
+            ImGui::TableNextColumn();
+            ImGui::Text("%s  (%.0f MB)", r.version.c_str(), static_cast<double>(r.size) / (1024.0 * 1024.0));
+            ImGui::TableNextColumn();
+            std::string engines;
+            for (const std::string& e : r.engines) engines += (engines.empty() ? "" : ", ") + e;
+            ImGui::TextDisabled(tr("engine %s"), engines.c_str());
+            ImGui::TableNextColumn();
+            const Tool* installed = m_catalog.installedTool(r.name);
+            const bool newer = !installed || versionLess(installed->version, r.version);
+            if (!newer) ImGui::TextUnformatted(tr("installed"));
+            else if (!m_catalog.toolMatches(r)) ImGui::TextDisabled("%s", r.protocol != kLiveProtocol ? tr("needs another Manager") : tr("no matching engine"));
+            else {
+                ImGui::BeginDisabled(m_job.running());
+                const std::string label = installed ? trf("Update to %s", r.version.c_str()) : std::string(tr("Install"));
+                if (ImGui::SmallButton(label.c_str()) &&
+                    m_job.start(trf("Install %s %s", r.name.c_str(), r.version.c_str()),
+                                powershellArgs(installerScript(), {"tool", "-Index", releaseIndex(), "-Name", r.name, "-Root", toolsRoot()}))) {
+                    m_status.clear();
+                    m_jobOutput.clear();
+                }
+                ImGui::EndDisabled();
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
 }
 
 void App::newProjectPopup() {
