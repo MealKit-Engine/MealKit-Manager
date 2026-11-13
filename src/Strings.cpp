@@ -14,6 +14,8 @@ struct Pair {
 
 // When new text is shown on screen, add its Korean here (tests/CatalogTests.cpp checks that all tr text in App.cpp exists)
 constexpr Pair kKorean[] = {
+    {"Double-click or Enter to open in the editor", "더블클릭하거나 Enter를 누르면 에디터에서 열려요"},
+    {"%d project(s) whose folder can't be found", "폴더를 찾을 수 없는 프로젝트 %d개"},
     {"Settings", "설정"},
     {"A new MealKit Manager is available.", "새 MealKit Manager가 나왔어요."},
     {"Close", "닫기"},

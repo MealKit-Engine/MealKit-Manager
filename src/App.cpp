@@ -437,14 +437,13 @@ void App::projectsTab() {
     char countText[32] = {};
     if (m_search[0]) std::snprintf(countText, sizeof(countText), "%d / %d", shown, static_cast<int>(projects.size()));
     const std::string count = countText;
-    const char* sorts[] = {tr("Recent"), tr("Name"), tr("Engine"), tr("Created")};
-    const int sortIndex = m_sortColumn < 0 ? 0 : m_sortColumn;
+    const char* sorts[] = {tr("Recent"), tr("Name"), tr("Created")};
+    const int sortColumns[] = {-1, 1, 3}; // m_sortColumn: -1 recent order, 1 name, 3 created
+    const int sortIndex = m_sortColumn < 0 ? 0 : m_sortColumn == 1 ? 1 : 2;
     const ImGuiStyle& style = ImGui::GetStyle();
     float sortWidth = 0.0f;
     for (const char* label : sorts) sortWidth = std::max(sortWidth, ImGui::CalcTextSize(label).x);
     sortWidth += ImGui::GetFrameHeight() + style.FramePadding.x * 2;
-    const std::string removeMissing = trf("Remove Missing (%d)", missing);
-    const float missingWidth = missing > 0 ? ImGui::CalcTextSize(removeMissing.c_str()).x + style.FramePadding.x * 2 + style.ItemSpacing.x : 0.0f;
     const float countWidth = count.empty() ? 0.0f : ImGui::CalcTextSize(count.c_str()).x + style.ItemSpacing.x;
     // The page's actions end the search row (one toolbar line, docs/UX_REVIEW.md 3.1)
     float actionsWidth;
@@ -453,25 +452,20 @@ void App::projectsTab() {
         actionsWidth = ImGui::CalcTextSize(iconLabel(kIconAdd, tr("New Project")).c_str()).x + ImGui::CalcTextSize(importLabel.c_str()).x +
                        style.FramePadding.x * 4 + style.ItemSpacing.x * 2;
     }
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - countWidth - sortWidth - missingWidth - actionsWidth - style.ItemSpacing.x);
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - countWidth - sortWidth - actionsWidth - style.ItemSpacing.x);
     ImGui::InputTextWithHint("##search", iconLabel(kIconSearch, tr("Search (Ctrl+F)")).c_str(), m_search, sizeof(m_search), ImGuiInputTextFlags_EscapeClearsAll);
     if (!count.empty()) {
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("%s", count.c_str());
     }
-    if (missing > 0) {
-        ImGui::SameLine();
-        if (ImGui::Button(removeMissing.c_str())) removeMissingProjects();
-        ImGui::SetItemTooltip("%s", tr("Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted)."));
-    }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(sortWidth);
     if (ImGui::BeginCombo("##sort", sorts[sortIndex])) {
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < 3; ++i)
             if (ImGui::Selectable(sorts[i], i == sortIndex)) {
-                m_sortColumn = i == 0 ? -1 : i;
-                m_sortAscending = i != 3; // newest first for the date
+                m_sortColumn = sortColumns[i];
+                m_sortAscending = sortColumns[i] != 3; // newest first for the date
             }
         ImGui::EndCombo();
     }
@@ -480,9 +474,17 @@ void App::projectsTab() {
     ImGui::BeginDisabled(busy);
     if (actionButton(kIconFolder, tr("Import..."), false, tr("Add a folder that has mealkit.project to the list."))) pickFolder(0);
     ImGui::SameLine();
-    if (actionButton(kIconAdd, tr("New Project"), false, "Ctrl+N")) m_openNew = true;
+    if (actionButton(kIconAdd, tr("New Project"), true, "Ctrl+N")) m_openNew = true;
     ImGui::EndDisabled();
     ImGui::Dummy(ImVec2(0, 2.0f));
+    if (missing > 0) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(theme::danger(), "%s", trf("%d project(s) whose folder can't be found", missing).c_str());
+        ImGui::SameLine();
+        if (iconButton(kIconRemove, tr("Remove from List"), true, tr("Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted)."),
+                       tr("Remove from List")))
+            removeMissingProjects();
+    }
 
     projectList(busy);
 
@@ -530,13 +532,8 @@ void App::projectList(bool busy) {
     for (const Project& p : m_catalog.projects())
         if (containsNoCase(p.name, m_search) || containsNoCase(p.directory, m_search)) rows.push_back(&p);
     if (m_sortColumn > 0) {
-        auto engineVersion = [this](const Project* p) {
-            const Engine* e = m_catalog.engineFor(*p);
-            return e ? e->version : p->engineVersion;
-        };
         auto less = [&](const Project* a, const Project* b) {
             if (m_sortColumn == 1) return lessNoCase(a->name, b->name);
-            if (m_sortColumn == 2) return versionLess(engineVersion(a), engineVersion(b));
             return a->created < b->created;
         };
         std::stable_sort(rows.begin(), rows.end(), [&](const Project* a, const Project* b) {
@@ -563,9 +560,9 @@ void App::projectList(bool busy) {
     }
 
     const float dpi = ImGui::GetStyle().FontScaleDpi;
-    const float rowHeight = 60.0f * dpi;
-    const float tile = 40.0f * dpi;
-    const float pad = 12.0f * dpi;
+    const float rowHeight = 52.0f * dpi;
+    const float tile = 36.0f * dpi;
+    const float pad = 10.0f * dpi;
     const bool typing = ImGui::GetIO().WantTextInput;
     for (const Project* pp : rows) {
         const Project& p = *pp;
@@ -587,10 +584,9 @@ void App::projectList(bool busy) {
             const Release* release = Catalog::releaseFor(p, m_releases);
             state = release ? trf("Engine %s not installed", release->version.c_str()) : std::string(tr("engine not found"));
             if (!release) stateColor = theme::danger();
-        } else if (m_catalog.needsUpgrade(p)) {
-            state = trf("Upgrade %s -> %s", p.engineVersion.c_str(), engine->version.c_str());
         }
 
+        // The whole row: click selects, double-click / Enter opens (no Open button: docs/UX_REVIEW.md 3.2)
         ImGui::PushStyleColor(ImGuiCol_Header, theme::gray(5));
         const bool clicked = ImGui::Selectable("##row", isSelected, ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_AllowOverlap,
                                                ImVec2(rowWidth, rowHeight));
@@ -599,7 +595,7 @@ void App::projectList(bool busy) {
             m_selected = p.directory;
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && p.valid && !busy) requestRow(p.directory, RowAction::Open);
         }
-        ImGui::SetItemTooltip("%s", p.directory.c_str());
+        if (p.valid) ImGui::SetItemTooltip("%s", tr("Double-click or Enter to open in the editor"));
         // Keyboard: the selection follows the arrow keys, Enter opens, Delete takes it off the list
         if (ImGui::IsItemFocused() && !typing) {
             if (ImGui::GetIO().NavVisible && !isSelected) m_selected = p.directory;
@@ -612,7 +608,6 @@ void App::projectList(bool busy) {
             projectMenu(p, busy);
             ImGui::EndPopup();
         }
-        const bool rowHovered = ImGui::IsMouseHoveringRect(rowPos, ImVec2(rowPos.x + rowWidth, rowPos.y + rowHeight));
         const ImVec2 after = ImGui::GetCursorScreenPos();
         ImDrawList* draw = ImGui::GetWindowDrawList();
         if (isSelected) {
@@ -621,12 +616,26 @@ void App::projectList(bool busy) {
                                 ImGui::GetColorU32(theme::accent()), bar);
         }
 
-        ImGui::SetCursorScreenPos(ImVec2(rowPos.x + pad, rowPos.y + (rowHeight - tile) * 0.5f));
+        // Favorite star first, always shown (off = gray outline, on = orange fill)
+        const float button = ImGui::GetFrameHeight();
+        ImGui::SetCursorScreenPos(ImVec2(rowPos.x + pad, rowPos.y + (rowHeight - button) * 0.5f));
+        const char* star = iconFont ? (p.favorite ? kIconStarFilled : kIconStar) : (p.favorite ? "\xE2\x98\x85" : "\xE2\x98\x86");
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme::gray(4));
+        ImGui::PushStyleColor(ImGuiCol_Text, p.favorite ? theme::warning() : theme::gray(9));
+        const bool starPressed = ImGui::Button((std::string(star) + "##fav").c_str(), ImVec2(button, button));
+        ImGui::PopStyleColor(3);
+        if (starPressed) {
+            m_pendingFavorite = p.directory;
+            m_pendingFavoriteOn = !p.favorite;
+        }
+        ImGui::SetItemTooltip("%s", tr("Favorite"));
+
+        const float tileX = rowPos.x + pad + button + 6.0f * dpi;
+        ImGui::SetCursorScreenPos(ImVec2(tileX, rowPos.y + (rowHeight - tile) * 0.5f));
         projectTile(p, tile);
 
-        // Right side: More, favorite star (on hover or when on), then the row's action button.
-        // The action that fixes a state replaces the state text ([Install Engine 0.9], [Upgrade]); [Open] shows on the hovered or selected row
-        const float button = ImGui::GetFrameHeight();
+        // Right side: More, then the action that fixes a state ([Install Engine 0.9], [Upgrade]) or the state text, then the engine tag
         float right = rowPos.x + rowWidth - pad - button;
         ImGui::SetCursorScreenPos(ImVec2(right, rowPos.y + (rowHeight - button) * 0.5f));
         if (iconButton(kIconMore, tr("More"))) {
@@ -637,24 +646,10 @@ void App::projectList(bool busy) {
             projectMenu(p, busy);
             ImGui::EndPopup();
         }
-        right -= button + 4.0f * dpi;
-        ImGui::SetCursorScreenPos(ImVec2(right, rowPos.y + (rowHeight - button) * 0.5f));
-        const char* star = iconFont ? (p.favorite ? kIconStarFilled : kIconStar) : (p.favorite ? "\xE2\x98\x85" : "\xE2\x98\x86");
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleColor(ImGuiCol_Text, p.favorite ? theme::warning() : (rowHovered ? theme::gray(11) : ImVec4(0, 0, 0, 0)));
-        const bool starPressed = ImGui::Button((std::string(star) + "##fav").c_str(), ImVec2(button, button));
-        ImGui::PopStyleColor(2);
-        if (starPressed) {
-            m_pendingFavorite = p.directory;
-            m_pendingFavoriteOn = !p.favorite;
-        }
-        ImGui::SetItemTooltip("%s", tr("Favorite"));
 
-        // Pick the row's action
         const char* actionGlyph = nullptr;
         std::string actionLabel;
         RowAction action = RowAction::Open;
-        bool actionPrimary = true;
         const char* actionTip = nullptr;
         if (p.valid && !engine) {
             if (const Release* release = Catalog::releaseFor(p, m_releases)) {
@@ -667,14 +662,7 @@ void App::projectList(bool busy) {
             actionGlyph = kIconUp;
             actionLabel = trf("Upgrade %s -> %s", p.engineVersion.c_str(), engine->version.c_str());
             action = RowAction::Upgrade;
-            actionPrimary = false;
             actionTip = tr("Made with an older engine: brings it to this one.");
-            state.clear();
-        }
-        if (!actionGlyph && engine && (rowHovered || isSelected)) {
-            actionGlyph = kIconLaunch;
-            actionLabel = tr("Open");
-            actionTip = tr("Open in Editor  (Enter, double-click)");
         }
         if (actionGlyph) {
             float w;
@@ -685,7 +673,7 @@ void App::projectList(bool busy) {
             right -= w + 8.0f * dpi;
             ImGui::SetCursorScreenPos(ImVec2(right, rowPos.y + (rowHeight - button) * 0.5f));
             ImGui::BeginDisabled(busy);
-            if (actionButton(actionGlyph, actionLabel, actionPrimary, actionTip)) {
+            if (actionButton(actionGlyph, actionLabel, false, actionTip)) {
                 m_selected = p.directory;
                 requestRow(p.directory, action);
             }
@@ -695,26 +683,37 @@ void App::projectList(bool busy) {
             right -= ImGui::CalcTextSize(state.c_str()).x + 12.0f * dpi;
             draw->AddText(ImVec2(right, rowPos.y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f), ImGui::GetColorU32(stateColor), state.c_str());
         }
+        // Engine tag (like Godot's version tag), only when nothing on the row already names the engine
+        const std::string version = engine ? engine->version : p.engineVersion;
+        if (!actionGlyph && state.empty() && !version.empty()) {
+            theme::FontScope font(theme::kCaption);
+            const ImVec2 text = ImGui::CalcTextSize(version.c_str());
+            const float tagPad = 6.0f * dpi;
+            right -= text.x + tagPad * 2 + 10.0f * dpi;
+            const float y = rowPos.y + (rowHeight - text.y - 4.0f * dpi) * 0.5f;
+            draw->AddRectFilled(ImVec2(right, y), ImVec2(right + text.x + tagPad * 2, y + text.y + 4.0f * dpi), ImGui::GetColorU32(theme::gray(4)),
+                                4.0f * dpi);
+            draw->AddText(ImVec2(right + tagPad, y + 2.0f * dpi), ImGui::GetColorU32(theme::gray(11)), version.c_str());
+        }
 
-        // Name and the summary line, clipped before the right side so nothing there is pushed out
-        const float textX = rowPos.x + pad + tile + pad;
+        // Name and path, clipped before the right side so nothing there is pushed out
+        const float textX = tileX + tile + pad;
         const float textRight = std::max(textX, right - 12.0f * dpi);
         std::string name = p.name;
         if (!p.valid) {
             const size_t slash = p.directory.find_last_of("\\/");
             name = slash == std::string::npos ? p.directory : p.directory.substr(slash + 1);
         }
-        std::string summary;
-        if (engine) summary = trf("Engine %s", engine->version.c_str());
-        else if (!p.engineVersion.empty()) summary = trf("Engine %s", p.engineVersion.c_str());
-        if (!p.created.empty()) summary += (summary.empty() ? "" : "  \xC2\xB7  ") + p.created;
         draw->PushClipRect(ImVec2(textX, rowPos.y), ImVec2(textRight, rowPos.y + rowHeight), true);
         {
             theme::FontScope font(theme::kBody, true);
             draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f - ImGui::GetTextLineHeight() - 1.0f * dpi),
                           ImGui::GetColorU32(p.valid ? theme::gray(12) : theme::gray(11)), name.c_str());
         }
-        draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f + 1.0f * dpi), ImGui::GetColorU32(theme::gray(11)), summary.c_str());
+        {
+            theme::FontScope font(theme::kCaption);
+            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f + 2.0f * dpi), ImGui::GetColorU32(theme::gray(11)), p.directory.c_str());
+        }
         draw->PopClipRect();
 
         ImGui::SetCursorScreenPos(after);
