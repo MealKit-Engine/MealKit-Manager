@@ -74,4 +74,6 @@ install(FILES scripts/install.ps1 DESTINATION .)
 
 if(WIN32)
     target_sources(MealKitManager PRIVATE res/MealKitManager.rc) # app icon (engine docs/TOOL_DESIGN.md section 5)
+    # rc.exe reports no dependencies: without this a regenerated icon never reaches the exe
+    set_source_files_properties(res/MealKitManager.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/MealKitManager.ico")
 endif()
