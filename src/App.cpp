@@ -14,8 +14,92 @@
 #include <cstring>
 #include <filesystem>
 
+#include <mkcontract/User.h>
+
 namespace mkmanager {
 namespace {
+
+// Checkbox and radio colors (engine docs/TOOL_DESIGN.md 3.1, 3.2): a gray 4 box on a gray 2 panel is about 1.25:1, so an unchecked
+// box gets a gray 9 outline (gray 11 hovered) and a checked one the accent fill with a gray 12 mark. Same as MkRender tool/App.cpp
+const ImVec4 kControlOutline(0x8A / 255.0f, 0x8A / 255.0f, 0x8A / 255.0f, 1.0f);      // gray 9
+const ImVec4 kControlOutlineHover(0xAF / 255.0f, 0xAF / 255.0f, 0xAF / 255.0f, 1.0f); // gray 11
+const ImVec4 kControlMark(0xEB / 255.0f, 0xEB / 255.0f, 0xEB / 255.0f, 1.0f);         // gray 12
+const ImVec4 kAccent(0x3B / 255.0f, 0x63 / 255.0f, 0xFB / 255.0f, 1.0f);
+const ImVec4 kAccentHover(0x4B / 255.0f, 0x75 / 255.0f, 0xFF / 255.0f, 1.0f);
+const ImVec4 kAccentDown(0x27 / 255.0f, 0x4D / 255.0f, 0xEA / 255.0f, 1.0f);
+
+// Pushes the fill and mark of a checkbox or radio button in the state it is drawn in; popControlColors after
+void pushControlColors(bool on) {
+    const ImVec4 clear(0.0f, 0.0f, 0.0f, 0.0f);
+    const ImGuiStyle& s = ImGui::GetStyle();
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, on ? kAccent : clear);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, on ? kAccentHover : s.Colors[ImGuiCol_FrameBg]);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, on ? kAccentDown : s.Colors[ImGuiCol_FrameBgHovered]);
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, kControlMark);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, s.FrameRounding * 0.5f); // a 4 px box, not the round 8 px of fields
+}
+
+void popControlColors() {
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
+}
+
+// Every checkbox goes through here, never ImGui::Checkbox (engine docs/TOOL_DESIGN.md 3.2)
+bool checkbox(const char* label, bool* v) {
+    const bool on = *v;
+    pushControlColors(on);
+    const bool changed = ImGui::Checkbox(label, v);
+    const float rounding = ImGui::GetStyle().FrameRounding;
+    popControlColors();
+    if (!on) {
+        // The box is the square at the start of the item (ImGui::Checkbox check_bb)
+        const ImVec2 p = ImGui::GetItemRectMin();
+        const float size = ImGui::GetFrameHeight();
+        const float width = std::max(1.0f, ImGui::GetStyle().FontScaleDpi);
+        const float inset = width * 0.5f;
+        ImGui::GetWindowDrawList()->AddRect({p.x + inset, p.y + inset}, {p.x + size - inset, p.y + size - inset},
+                                            ImGui::GetColorU32(ImGui::IsItemHovered() ? kControlOutlineHover : kControlOutline), rounding, 0, width);
+    }
+    return changed;
+}
+
+bool radioButton(const char* label, bool active) {
+    pushControlColors(active);
+    const bool pressed = ImGui::RadioButton(label, active);
+    popControlColors();
+    if (!active) {
+        // Same circle as ImGui::RadioButton: radius (square - 1) / 2 around the square's center
+        const ImVec2 p = ImGui::GetItemRectMin();
+        const float size = ImGui::GetFrameHeight();
+        const float width = std::max(1.0f, ImGui::GetStyle().FontScaleDpi);
+        const ImVec2 center(std::floor(p.x + size * 0.5f + 0.5f), std::floor(p.y + size * 0.5f + 0.5f));
+        ImGui::GetWindowDrawList()->AddCircle(center, (size - 1.0f) * 0.5f - width * 0.5f,
+                                              ImGui::GetColorU32(ImGui::IsItemHovered() ? kControlOutlineHover : kControlOutline), 0, width);
+    }
+    return pressed;
+}
+
+// Follows the suite language when an Mk tool changes it in editor_settings.txt (engine docs/TOOL_DESIGN.md section 4 "Language").
+// The first call only notes the file time, so --lang stays until the file changes
+void followSuiteLanguage() {
+    static std::filesystem::file_time_type seen{};
+    static bool first = true;
+    static Uint64 next = 0;
+    const Uint64 now = SDL_GetTicks();
+    if (now < next) return;
+    next = now + 1000;
+    const std::string path = mkcontract::userPath(mkcontract::kEditorSettings);
+    std::error_code ec;
+    const auto t = path.empty() ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+    if (first || t != seen) {
+        if (!first) {
+            const std::string code = mkcontract::editorSetting("language");
+            if (!code.empty()) mkmanager::setLanguage(code);
+        }
+        first = false;
+        seen = t;
+    }
+}
 
 bool containsNoCase(const std::string& text, const char* needle) {
     if (!needle[0]) return true;
@@ -86,6 +170,7 @@ void App::init(const std::string& extraEngine) {
 void App::reload() { m_catalog.load(m_extraEngine); }
 
 void App::frame() {
+    followSuiteLanguage();
     takePickedFolder();
     takePickedIcon();
     if (m_job.takeFinished()) {
@@ -1862,7 +1947,7 @@ void App::engineInstallPopup() {
         for (const ToolRelease* t : tools)
             if (t->name == name) release = t;
         if (!release) continue;
-        ImGui::Checkbox((name + " " + release->version + "##" + name).c_str(), &on);
+        checkbox((name + " " + release->version + "##" + name).c_str(), &on);
         ImGui::SameLine();
         ImGui::TextDisabled("%.0f MB", static_cast<double>(release->size) / (1024.0 * 1024.0));
         if (on) total += static_cast<double>(release->size);
