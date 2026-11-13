@@ -236,7 +236,7 @@ try {
     if ($Command -eq "list") {
         if ($mgr) { Write-Output ("manager`t{0}`t{1}`t{2}`t{3}" -f $mgr.version, $mgr.size, $mgr.url, $mgr.sha256) }
         foreach ($t in @($data.tools)) {
-            if ($t) { Write-Output ("tool`t{0}`t{1}`t{2}`t{3}`t{4}`t{5}`t{6}" -f $t.name, $t.version, $t.size, $t.url, $t.sha256, $t.protocol, (@($t.engines) -join ",")) }
+            if ($t) { Write-Output ("tool`t{0}`t{1}`t{2}`t{3}`t{4}`t{5}`t{6}`t{7}`t{8}" -f $t.name, $t.version, $t.size, $t.url, $t.sha256, $t.protocol, (@($t.engines) -join ","), ("" + $t.summary), ("" + $t.icon)) }
         }
         foreach ($e in $engines) { Write-Output ("engine`t{0}`t{1}`t{2}`t{3}" -f $e.version, $e.size, $e.url, $e.sha256) }
         exit 0

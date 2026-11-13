@@ -62,8 +62,9 @@ struct ToolRelease {
     unsigned long long size = 0;
     uint32_t protocol = 0;
     std::vector<std::string> engines; // "0.9"
+    std::string summary, icon;        // from the tool's manifest (optional)
 };
-// "tool<TAB>name<TAB>version<TAB>size<TAB>url<TAB>sha256<TAB>protocol<TAB>engines" lines (engines comma separated)
+// "tool<TAB>name<TAB>version<TAB>size<TAB>url<TAB>sha256<TAB>protocol<TAB>engines[<TAB>summary<TAB>icon]" lines (engines comma separated)
 std::vector<ToolRelease> parseToolReleases(const std::string& output);
 // Where installed tools go: <user folder>\tools\<tool> (where the editor's [Tools] menu and this Manager look)
 std::string toolsRoot();

@@ -98,6 +98,7 @@ private:
     void installTool(const std::string& name);
     void launchTool(const Tool& tool, const std::string& project);
     std::string toolProject() const;
+    void writeAvailableToolsFile();
     void openWithMenu(const Project& p, bool busy);
     std::vector<std::string> m_toolQueue; // tools waiting to install ([Update All])
     std::string m_jobInstallsTool;        // the running job installs this tool

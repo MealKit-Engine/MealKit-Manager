@@ -200,6 +200,8 @@ void testEngineMatching(const fs::path& root) {
         CHECK(!catalog.toolMatches(tools[1])); // only for 0.7
         CHECK(!catalog.toolMatches(tools[2])); // another live protocol
     }
+    const std::vector<ToolRelease> described = parseToolReleases("tool\tMkAudio\t0.3.1\t9\tu\ts\t1\t0.9\tGame sound events\taudio\n");
+    CHECK(described.size() == 1 && described[0].summary == "Game sound events" && described[0].icon == "audio");
 
     CHECK(minorOf("0.9.12") == "0.9" && minorOf("x").empty() && versionLess("0.9.9", "0.9.10") && !versionLess("0.9.10", "0.9.9"));
     CHECK(setProjectEngine(str(none), str(e95)));

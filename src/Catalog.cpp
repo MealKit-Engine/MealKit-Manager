@@ -83,6 +83,8 @@ std::vector<ToolRelease> parseToolReleases(const std::string& output) {
             if (comma == std::string::npos) break;
             start = comma + 1;
         }
+        if (f.size() > 8) t.summary = f[8];
+        if (f.size() > 9) t.icon = f[9];
         out.push_back(std::move(t));
     }
     return out;

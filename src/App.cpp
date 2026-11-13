@@ -96,6 +96,7 @@ void App::frame() {
             m_releases = parseReleaseList(m_job.output());
             m_managerRelease = parseManagerRelease(m_job.output());
             m_toolReleases = parseToolReleases(m_job.output());
+            writeAvailableToolsFile();
             m_releasesError = m_job.exitCode() != 0 ? m_job.output() : std::string();
         } else {
             finishJob();
@@ -1136,6 +1137,15 @@ const char* toolGlyph(const std::string& name) {
     if (lower.find("qa") != std::string::npos) return "\xEE\xA6\xA9";     // U+E9D9 Diagnostic
     return "\xEE\xB1\xBA";                                               // U+EC7A DeveloperTools
 }
+// A manifest icon keyword ("audio", "ui", "render", ...) as a glyph; unknown words fall back to the name
+const char* withKeyword(const std::string& keyword, const std::string& name) {
+    static const std::pair<const char*, const char*> glyphs[] = {{"audio", "\xEE\x9D\xA7"}, {"ui", "\xEE\x9F\xB4"}, {"render", "\xEE\x9E\x90"},
+                                                                  {"qa", "\xEE\xA6\xA9"},    {"test", "\xEE\xA6\xA9"}, {"data", "\xEE\xA3\xAF"},
+                                                                  {"map", "\xEE\x9C\x87"},   {"scene", "\xEE\xA3\xBD"}};
+    for (const auto& [k, g] : glyphs)
+        if (keyword == k) return g;
+    return toolGlyph(name);
+}
 } // namespace
 
 std::vector<App::ToolRowView> App::toolRows() const {
@@ -1159,6 +1169,14 @@ std::vector<App::ToolRowView> App::toolRows() const {
         }
     std::stable_sort(rows.begin(), rows.end(), [](const ToolRowView& a, const ToolRowView& b) { return a.name < b.name; });
     return rows;
+}
+
+// What this PC can install, for the editor's [Tools] menu (mkcontract available_tools.txt): the newest matching release per tool
+void App::writeAvailableToolsFile() {
+    std::vector<mkcontract::AvailableTool> list;
+    for (const ToolRowView& row : toolRows())
+        if (row.release && row.matches) list.push_back({row.name, row.release->version, row.release->summary, row.release->icon});
+    mkcontract::writeAvailableTools(list);
 }
 
 bool App::toolUpdatable(const ToolRowView& row) const {
@@ -1253,7 +1271,8 @@ void App::toolsTab() {
         const ImVec2 t0(rowPos.x + pad, rowPos.y + (rowHeight - tile) * 0.5f);
         draw->AddRectFilled(t0, ImVec2(t0.x + tile, t0.y + tile), ImGui::GetColorU32(row.installed ? theme::gray(6) : theme::gray(4)), 8.0f * dpi);
         if (iconFont) {
-            const char* glyph = toolGlyph(row.name);
+            const std::string keyword = row.installed && !row.installed->icon.empty() ? row.installed->icon : row.release ? row.release->icon : std::string();
+            const char* glyph = keyword.empty() ? toolGlyph(row.name) : withKeyword(keyword, row.name);
             const ImVec2 g = ImGui::CalcTextSize(glyph);
             draw->AddText(ImVec2(t0.x + (tile - g.x) * 0.5f, t0.y + (tile - g.y) * 0.5f), ImGui::GetColorU32(theme::gray(12)), glyph);
         }
@@ -1357,6 +1376,8 @@ void App::toolsTab() {
         if (row.installed && toolUpdatable(row)) version = row.installed->version + "  ->  " + row.release->version;
         else if (row.installed) version = row.installed->version;
         else if (row.release) version = trf("%s, not installed", row.release->version.c_str());
+        const std::string summary = row.installed && !row.installed->summary.empty() ? row.installed->summary : row.release ? row.release->summary : std::string();
+        if (!summary.empty()) version = summary + "  \xC2\xB7  " + version;
         draw->PushClipRect(ImVec2(textX, rowPos.y), ImVec2(std::max(textX, right), rowPos.y + rowHeight), true);
         {
             theme::FontScope font(theme::kBody, true);
