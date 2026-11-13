@@ -14,6 +14,9 @@ struct Pair {
 
 // When new text is shown on screen, add its Korean here (tests/CatalogTests.cpp checks that all tr text in App.cpp exists)
 constexpr Pair kKorean[] = {
+    {"Change Icon...", "아이콘 바꾸기..."},
+    {"Use Default Icon", "기본 아이콘으로"},
+    {"Cannot change the icon: %s", "아이콘을 바꿀 수 없어요: %s"},
     {"Double-click or Enter to open in the editor", "더블클릭하거나 Enter를 누르면 에디터에서 열려요"},
     {"%d project(s) whose folder can't be found", "폴더를 찾을 수 없는 프로젝트 %d개"},
     {"Settings", "설정"},

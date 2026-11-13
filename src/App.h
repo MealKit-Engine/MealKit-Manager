@@ -37,6 +37,7 @@ inline constexpr const char* kIconEngines = "\xEE\x9F\xBC";  // U+E7FC Game
 inline constexpr const char* kIconTools = "\xEE\xB1\xBA";    // U+EC7A DeveloperTools
 inline constexpr const char* kIconSettings = "\xEE\x9C\x93"; // U+E713 Setting
 inline constexpr const char* kIconCancel = "\xEE\x9C\x91";   // U+E711 close, dismiss
+inline constexpr const char* kIconEdit = "\xEE\x9C\x8F";     // U+E70F edit, rename
 
 class App {
 public:
@@ -73,6 +74,15 @@ private:
     // Project icons (mealkit.project "icon", default icon.png), loaded once per folder; null = draw the letter tile
     std::map<std::string, SDL_Texture*> m_icons;
     SDL_Texture* projectIcon(const Project& p);
+    SDL_Texture* m_logo = nullptr; // the MealKit logo (Logo.h), the default icon
+    bool m_logoLoaded = false;
+    SDL_Texture* logoTexture();
+    // Icon file dialog (returns on another thread): the project it is for, then the picked PNG ("\x01" while waiting)
+    std::string m_iconFor;
+    std::string m_pickedIcon;
+    void pickIcon(const std::string& project);
+    void takePickedIcon();
+    void resetIcon(const std::string& project);
     void projectTile(const Project& p, float size);
     void reload();
     void finishJob();

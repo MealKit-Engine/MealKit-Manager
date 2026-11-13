@@ -1,5 +1,6 @@
 #include "App.h"
 
+#include "Logo.h"
 #include "Strings.h"
 #include "Theme.h"
 
@@ -85,6 +86,7 @@ void App::reload() { m_catalog.load(m_extraEngine); }
 
 void App::frame() {
     takePickedFolder();
+    takePickedIcon();
     if (m_job.takeFinished()) {
         if (m_jobChecksToolchain) {
             m_jobChecksToolchain = false;
@@ -159,6 +161,73 @@ void App::finishJob() {
 App::~App() {
     for (auto& [folder, texture] : m_icons)
         if (texture) SDL_DestroyTexture(texture);
+    if (m_logo) SDL_DestroyTexture(m_logo);
+}
+
+SDL_Texture* App::logoTexture() {
+    if (m_logoLoaded || !renderer) return m_logo;
+    m_logoLoaded = true;
+    if (SDL_Surface* surface = SDL_LoadPNG_IO(SDL_IOFromConstMem(kLogoPng, sizeof(kLogoPng)), true)) {
+        m_logo = SDL_CreateTextureFromSurface(renderer, surface);
+        if (m_logo) SDL_SetTextureScaleMode(m_logo, SDL_SCALEMODE_LINEAR);
+        SDL_DestroySurface(surface);
+    }
+    return m_logo;
+}
+
+namespace {
+std::mutex g_iconMutex;
+void SDLCALL onIconPicked(void* userdata, const char* const* filelist, int) {
+    std::lock_guard<std::mutex> lock(g_iconMutex);
+    *static_cast<std::string*>(userdata) = (filelist && filelist[0]) ? filelist[0] : "";
+}
+} // namespace
+
+// Click on the selected row's icon: pick a PNG, copied into the project as icon.png (docs/UX_REVIEW.md 3.2)
+void App::pickIcon(const std::string& project) {
+    {
+        std::lock_guard<std::mutex> lock(g_iconMutex);
+        m_iconFor = project;
+        m_pickedIcon = "\x01";
+    }
+    static const SDL_DialogFileFilter filter = {"PNG", "png"};
+    SDL_ShowOpenFileDialog(onIconPicked, &m_pickedIcon, window, &filter, 1, project.c_str(), false);
+}
+
+void App::takePickedIcon() {
+    std::string picked, project;
+    {
+        std::lock_guard<std::mutex> lock(g_iconMutex);
+        if (m_iconFor.empty() || m_pickedIcon == "\x01") return;
+        picked = m_pickedIcon;
+        project.swap(m_iconFor);
+    }
+    if (picked.empty()) return; // canceled
+    std::string error;
+    if (!setProjectIcon(project, picked, error)) {
+        setStatus(trf("Cannot change the icon: %s", error.c_str()), true);
+        return;
+    }
+    auto found = m_icons.find(project);
+    if (found != m_icons.end()) {
+        if (found->second) SDL_DestroyTexture(found->second);
+        m_icons.erase(found);
+    }
+    reload();
+}
+
+void App::resetIcon(const std::string& project) {
+    std::string error;
+    if (!setProjectIcon(project, "", error)) {
+        setStatus(trf("Cannot change the icon: %s", error.c_str()), true);
+        return;
+    }
+    auto found = m_icons.find(project);
+    if (found != m_icons.end()) {
+        if (found->second) SDL_DestroyTexture(found->second);
+        m_icons.erase(found);
+    }
+    reload();
 }
 
 void App::setStatus(const std::string& text, bool error) {
@@ -322,17 +391,14 @@ void App::projectTile(const Project& p, float size) {
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const float rounding = 8.0f * ImGui::GetStyle().FontScaleDpi;
-    if (SDL_Texture* texture = projectIcon(p)) {
+    SDL_Texture* texture = projectIcon(p);
+    if (!texture && p.valid) texture = logoTexture();
+    if (texture) {
         draw->AddImageRounded(ImTextureRef(reinterpret_cast<ImTextureID>(texture)), pos, ImVec2(pos.x + size, pos.y + size), ImVec2(0, 0), ImVec2(1, 1),
                               IM_COL32_WHITE, rounding);
     } else {
-        static constexpr unsigned kTiles[] = {0x0090FF, 0x30A46C, 0xE5484D, 0x8E4EC6, 0xF76B15, 0x12A594};
-        unsigned hash = 0;
-        for (char ch : p.name) hash = hash * 31 + static_cast<unsigned char>(ch);
-        const ImVec4 tile = p.valid ? theme::rgb(kTiles[hash % 6]) : theme::gray(5);
-        draw->AddRectFilled(pos, ImVec2(pos.x + size, pos.y + size), ImGui::GetColorU32(tile), rounding);
-        std::string letter = p.name.empty() ? std::string("?") : p.name.substr(0, 1);
-        if (!letter.empty()) letter[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(letter[0])));
+        draw->AddRectFilled(pos, ImVec2(pos.x + size, pos.y + size), ImGui::GetColorU32(theme::gray(5)), rounding);
+        const std::string letter = "?"; // a missing project, or the logo didn't load
         theme::FontScope font(theme::kSubtitle, true);
         const ImVec2 text = ImGui::CalcTextSize(letter.c_str());
         draw->AddText(ImVec2(pos.x + (size - text.x) * 0.5f, pos.y + (size - text.y) * 0.5f), IM_COL32_WHITE, letter.c_str());
@@ -387,6 +453,12 @@ void App::projectMenu(const Project& p, bool busy) {
     if (ImGui::MenuItem(iconLabel(kIconFolderOpen, tr("Show Folder")).c_str())) SDL_OpenURL(("file:///" + p.directory).c_str());
     ImGui::EndDisabled();
     if (ImGui::MenuItem(iconLabel(kIconCopy, tr("Copy Path")).c_str())) SDL_SetClipboardText(p.directory.c_str());
+    ImGui::BeginDisabled(!p.valid);
+    if (ImGui::MenuItem(iconLabel(kIconEdit, tr("Change Icon...")).c_str())) pickIcon(p.directory);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(!p.valid || p.icon.empty());
+    if (ImGui::MenuItem(tr("Use Default Icon"))) resetIcon(p.directory);
+    ImGui::EndDisabled();
     ImGui::Separator();
     if (ImGui::MenuItem(tr("Favorite"), nullptr, p.favorite)) {
         m_pendingFavorite = p.directory;
@@ -634,6 +706,19 @@ void App::projectList(bool busy) {
         const float tileX = rowPos.x + pad + button + 6.0f * dpi;
         ImGui::SetCursorScreenPos(ImVec2(tileX, rowPos.y + (rowHeight - tile) * 0.5f));
         projectTile(p, tile);
+        if (p.valid && isSelected && !busy) {
+            const ImVec2 tileMin = ImGui::GetItemRectMin(), tileMax = ImGui::GetItemRectMax();
+            ImGui::SetCursorScreenPos(tileMin);
+            if (ImGui::InvisibleButton("##icon", ImVec2(tile, tile))) pickIcon(p.directory);
+            if (ImGui::IsItemHovered()) {
+                draw->AddRectFilled(tileMin, tileMax, IM_COL32(0, 0, 0, 120), 8.0f * dpi);
+                if (iconFont) {
+                    const ImVec2 g = ImGui::CalcTextSize(kIconEdit);
+                    draw->AddText(ImVec2((tileMin.x + tileMax.x - g.x) * 0.5f, (tileMin.y + tileMax.y - g.y) * 0.5f), IM_COL32_WHITE, kIconEdit);
+                }
+                ImGui::SetTooltip("%s", tr("Change Icon..."));
+            }
+        }
 
         // Right side: More, then the action that fixes a state ([Install Engine 0.9], [Upgrade]) or the state text, then the engine tag
         float right = rowPos.x + rowWidth - pad - button;
@@ -691,7 +776,7 @@ void App::projectList(bool busy) {
             const float tagPad = 6.0f * dpi;
             right -= text.x + tagPad * 2 + 10.0f * dpi;
             const float y = rowPos.y + (rowHeight - text.y - 4.0f * dpi) * 0.5f;
-            draw->AddRectFilled(ImVec2(right, y), ImVec2(right + text.x + tagPad * 2, y + text.y + 4.0f * dpi), ImGui::GetColorU32(theme::gray(4)),
+            draw->AddRectFilled(ImVec2(right, y), ImVec2(right + text.x + tagPad * 2, y + text.y + 4.0f * dpi), ImGui::GetColorU32(theme::gray(6)),
                                 4.0f * dpi);
             draw->AddText(ImVec2(right + tagPad, y + 2.0f * dpi), ImGui::GetColorU32(theme::gray(11)), version.c_str());
         }

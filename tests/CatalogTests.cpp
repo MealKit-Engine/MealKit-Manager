@@ -198,6 +198,19 @@ void testEngineMatching(const fs::path& root) {
     std::string text;
     mkcontract::readFile(str(none / "mealkit.project"), text);
     CHECK(text.find("\r\nengineVersion") != std::string::npos); // line endings kept
+
+    // Icon: copied in as icon.png with an icon line, then back to the default (line and file gone)
+    const fs::path png = root / "pick.png";
+    mkcontract::writeFile(str(png), std::string("\x89PNG\r\n\x1A\n0000", 12));
+    std::string iconError;
+    CHECK(setProjectIcon(str(none), str(png), iconError));
+    readProject(str(none), p);
+    CHECK(p.icon == "icon.png" && fs::exists(none / "icon.png") && p.engine == str(e95));
+    CHECK(setProjectIcon(str(none), "", iconError));
+    readProject(str(none), p);
+    CHECK(p.icon.empty() && !fs::exists(none / "icon.png"));
+    mkcontract::writeFile(str(root / "fake.png"), "GIF89a");
+    CHECK(!setProjectIcon(str(none), str(root / "fake.png"), iconError) && iconError == "not a PNG file");
 }
 
 // install.ps1 list / engine output (engine ROADMAP R2)

@@ -130,7 +130,7 @@ std::string minorOf(const std::string& version) {
 
 bool versionLess(const std::string& a, const std::string& b) { return versionParts(a) < versionParts(b); }
 
-bool setProjectEngine(const std::string& projectDirectory, const std::string& engineDirectory) {
+bool setProjectKey(const std::string& projectDirectory, const std::string& key, const std::string& value) {
     const std::string file = joinPath(projectDirectory, "mealkit.project");
     std::string text;
     if (!mkcontract::readFile(file, text)) return false;
@@ -140,17 +140,49 @@ bool setProjectEngine(const std::string& projectDirectory, const std::string& en
     bool replaced = false;
     for (const std::string& line : lines(text)) {
         const size_t start = line.find_first_not_of(" \t\xEF\xBB\xBF");
-        const bool isEngine = start != std::string::npos && line.compare(start, 6, "engine") == 0 && line.size() > start + 6 &&
-                              (line[start + 6] == ' ' || line[start + 6] == '\t');
-        if (isEngine && !replaced) {
-            out += line.substr(0, start) + "engine " + engineDirectory + eol;
+        const bool isKey = start != std::string::npos && line.compare(start, key.size(), key) == 0 && line.size() > start + key.size() &&
+                           (line[start + key.size()] == ' ' || line[start + key.size()] == '\t');
+        if (isKey && !replaced) {
+            if (!value.empty()) out += line.substr(0, start) + key + " " + value + eol;
             replaced = true;
         } else {
             out += line + eol;
         }
     }
-    if (!replaced) out += "engine " + engineDirectory + eol;
+    if (!replaced && !value.empty()) out += key + " " + value + eol;
     return mkcontract::writeFile(file, out);
+}
+
+bool setProjectIcon(const std::string& projectDirectory, const std::string& pngFile, std::string& error) {
+    namespace fs = std::filesystem;
+    auto native = [](const std::string& s) { return fs::path(std::u8string(s.begin(), s.end())); };
+    const fs::path target = native(joinPath(projectDirectory, "icon.png"));
+    std::error_code ec;
+    if (pngFile.empty()) {
+        fs::remove(target, ec);
+        if (!setProjectKey(projectDirectory, "icon", "")) {
+            error = "mealkit.project can't be written";
+            return false;
+        }
+        return true;
+    }
+    std::string head;
+    if (!mkcontract::readFile(pngFile, head) || head.compare(0, 8, "\x89PNG\r\n\x1A\n") != 0) {
+        error = "not a PNG file";
+        return false;
+    }
+    if (!fs::equivalent(native(pngFile), target, ec)) {
+        fs::copy_file(native(pngFile), target, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            error = ec.message();
+            return false;
+        }
+    }
+    if (!setProjectKey(projectDirectory, "icon", "icon.png")) {
+        error = "mealkit.project can't be written";
+        return false;
+    }
+    return true;
 }
 
 Toolchain parseToolchain(const std::string& output) {

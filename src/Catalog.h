@@ -93,8 +93,15 @@ inline constexpr const char* kBuildToolsWinget =
 std::string minorOf(const std::string& version);
 // true if version a < b, comparing the numbers
 bool versionLess(const std::string& a, const std::string& b);
-// Points the project's engine line at this folder (the project's build.bat reads it); other lines are kept
-bool setProjectEngine(const std::string& projectDirectory, const std::string& engineDirectory);
+// Sets the first "key value" line of mealkit.project (added at the end when missing; a blank value removes it). Other lines,
+// comments and line endings are kept
+bool setProjectKey(const std::string& projectDirectory, const std::string& key, const std::string& value);
+// Points the project's engine line at this folder (the project's build.bat reads it)
+inline bool setProjectEngine(const std::string& projectDirectory, const std::string& engineDirectory) {
+    return setProjectKey(projectDirectory, "engine", engineDirectory);
+}
+// Copies a PNG into the project as icon.png and writes the icon line; a blank file goes back to the default (line removed, icon.png deleted)
+bool setProjectIcon(const std::string& projectDirectory, const std::string& pngFile, std::string& error);
 
 bool readProject(const std::string& directory, Project& out);
 bool readEngine(const std::string& directory, Engine& out);
