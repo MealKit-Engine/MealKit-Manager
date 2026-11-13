@@ -6,6 +6,7 @@
 namespace mkmanager {
 
 void setLanguage(const std::string& language); // "ko", "en"
+const char* currentLanguage();                // "ko" or "en"
 const char* tr(const char* english);
 std::string trf(const char* english, ...); // translates, then fills in as a printf format
 

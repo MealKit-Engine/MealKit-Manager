@@ -1,5 +1,5 @@
 // MealKit Manager executable: SDL3 window + SDL_Renderer + Dear ImGui (same framework as the MkAudio tool). The actual screen is App.
-//   MealKitManager [--engine <engine folder>] [--lang ko|en] [--frames N --capture <png>]   (--engines: open Settings > Engines, --tools: start on the Tools page)
+//   MealKitManager [--engine <engine folder>] [--lang ko|en] [--frames N --capture <png>]   (--settings / --engines: open Settings at General / Engines, --tools: start on the Tools page)
 //   MealKitManager --list      prints project/engine/tool lists without a window (for tests/scripts)
 //   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty]   new project without a window (same script as the screen's [New Project])
 //   MealKitManager --open <project folder>                         opens that project in its engine's editor without a window
@@ -406,7 +406,7 @@ bool onSomeDisplay(const Placement& p) {
 int main(int argc, char** argv) {
     std::string engine, capture, language, newName, newPath, newTemplate, open;
     long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
-    bool list = false, releases = false, enginesTab = false, toolsTab = false, noLaunch = false, uninstall = false, assumeYes = false;
+    bool list = false, releases = false, enginesTab = false, toolsTab = false, settings = false, noLaunch = false, uninstall = false, assumeYes = false;
     std::string installVersion, installTool;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--engine") == 0 && i + 1 < argc) engine = argv[++i];
@@ -421,6 +421,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--releases") == 0) releases = true;
         else if (std::strcmp(argv[i], "--engines") == 0) enginesTab = true;
         else if (std::strcmp(argv[i], "--tools") == 0) toolsTab = true;
+        else if (std::strcmp(argv[i], "--settings") == 0) settings = true;
         else if (std::strcmp(argv[i], "--no-launch") == 0) noLaunch = true;
         else if (std::strcmp(argv[i], "--uninstall") == 0) uninstall = true;
         else if (std::strcmp(argv[i], "--yes") == 0) assumeYes = true;
@@ -496,6 +497,7 @@ int main(int argc, char** argv) {
     if (!language.empty()) mkmanager::setLanguage(language);
     if (enginesTab) app.showEngines();
     if (toolsTab) app.showToolsPage();
+    if (settings) app.showSettings();
 
     long frame = 0;
     for (bool running = true; running;) {

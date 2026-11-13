@@ -1325,6 +1325,34 @@ void App::settingsPopup() {
 void App::generalSettings() {
     pageTitle(tr("General"));
     ImGui::Spacing();
+
+    // Language: the editor settings' language line, shared with the editor and the tools (docs/UX_REVIEW.md 3.4)
+    {
+        struct Option {
+            const char* code;
+            const char* label; // each language's own name, never translated
+        };
+        static const Option options[] = {{"ko", "\xED\x95\x9C\xEA\xB5\xAD\xEC\x96\xB4"}, {"en", "English"}}; // 한국어
+        const char* current = currentLanguage();
+        const char* preview = options[0].label;
+        for (const Option& o : options)
+            if (std::strcmp(o.code, current) == 0) preview = o.label;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(tr("Language"));
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(200.0f * ImGui::GetStyle().FontScaleDpi);
+        if (ImGui::BeginCombo("##language", preview)) {
+            for (const Option& o : options)
+                if (ImGui::Selectable(o.label, std::strcmp(o.code, current) == 0) && std::strcmp(o.code, current) != 0) {
+                    if (mkcontract::setEditorSetting("language", o.code)) setLanguage(o.code);
+                    else setStatus(trf("Cannot save the language: %s", userDirectory().c_str()), true);
+                }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", tr("The editor and the tools use the same language."));
+    }
+    ImGui::Spacing();
     ImGui::SeparatorText(tr("New projects"));
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(tr("Default location"));

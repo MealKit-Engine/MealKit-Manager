@@ -14,6 +14,9 @@ struct Pair {
 
 // When new text is shown on screen, add its Korean here (tests/CatalogTests.cpp checks that all tr text in App.cpp exists)
 constexpr Pair kKorean[] = {
+    {"Language", "언어"},
+    {"The editor and the tools use the same language.", "에디터와 도구도 같은 언어를 써요."},
+    {"Cannot save the language: %s", "언어를 저장할 수 없어요: %s"},
     {"Move the project folder?", "프로젝트 폴더를 옮길까요?"},
     {"The build folder is deleted (it holds absolute paths): the game is rebuilt when it opens.", "build 폴더를 지워요 (절대 경로가 들어 있어요). 열 때 게임을 다시 빌드해요."},
     {"Move", "옮기기"},
@@ -179,6 +182,7 @@ bool g_korean = true;
 } // namespace
 
 void setLanguage(const std::string& language) { g_korean = language != "en"; }
+const char* currentLanguage() { return g_korean ? "ko" : "en"; }
 
 const char* tr(const char* english) {
     if (!g_korean) return english;

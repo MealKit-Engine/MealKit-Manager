@@ -56,6 +56,7 @@ public:
         m_settingsPage = SettingsPage::Engines;
     }
     void showToolsPage() { m_page = Page::Tools; }
+    void showSettings() { m_openSettings = true; } // --settings: General
 
 private:
     enum class Page { Projects, Tools };
