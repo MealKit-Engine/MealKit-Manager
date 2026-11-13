@@ -101,6 +101,11 @@ void App::frame() {
             finishJob();
         }
     }
+    if (!m_job.running() && !m_toolQueue.empty()) { // [Update All]: the next tool once the last one finished
+        const std::string next = m_toolQueue.front();
+        m_toolQueue.erase(m_toolQueue.begin());
+        installTool(next);
+    }
     if (!m_toolchainRequested && !m_job.running()) {
         m_toolchainRequested = true;
         if (m_job.start(tr("Toolchain check"), powershellArgs(installerScript(), {"check"}))) m_jobChecksToolchain = true;
@@ -158,6 +163,19 @@ void App::finishJob() {
             quitRequested = true;
         else if (ok)
             setStatus(trf("Updated, but the new Manager didn't start: %s", error.c_str()), true);
+    }
+    if (!m_jobInstallsTool.empty()) {
+        const std::string tool = m_jobInstallsTool;
+        m_jobInstallsTool.clear();
+        if (tool == m_openAfterInstall) {
+            const std::string project = m_openAfterInstallProject;
+            m_openAfterInstall.clear();
+            m_openAfterInstallProject.clear();
+            if (ok) {
+                reload();
+                if (const Tool* t = m_catalog.installedTool(tool)) launchTool(*t, project);
+            }
+        }
     }
     if (m_jobInstallsEngine) {
         m_jobInstallsEngine = false;
@@ -343,6 +361,13 @@ void App::header() {
         ImGui::SetItemTooltip("%s", item.key);
         if (pressed) m_page = item.page;
         x = ImGui::GetItemRectMax().x;
+        if (item.page == Page::Tools) { // a dot while a tool update waits (docs/UX_REVIEW.md 3.6)
+            bool update = false;
+            for (const ToolRowView& row : toolRows()) update |= toolUpdatable(row);
+            if (update)
+                ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(x - 10.0f * dpi, ImGui::GetItemRectMin().y + 7.0f * dpi), 3.5f * dpi,
+                                                            ImGui::GetColorU32(theme::accent()));
+        }
     }
     ImGui::PopStyleVar(3);
 
@@ -552,6 +577,7 @@ void App::projectMenu(const Project& p, bool busy) {
     ImGui::BeginDisabled(busy || !p.valid);
     if (ImGui::MenuItem(iconLabel(kIconLaunch, tr("Open in Editor")).c_str(), "Enter")) requestRow(p.directory, RowAction::Open);
     ImGui::EndDisabled();
+    openWithMenu(p, busy);
     ImGui::BeginDisabled(!p.valid);
     if (ImGui::MenuItem(iconLabel(kIconFolderOpen, tr("Show Folder")).c_str())) SDL_OpenURL(("file:///" + p.directory).c_str());
     ImGui::EndDisabled();
@@ -1092,89 +1118,304 @@ void App::enginesTab() {
     }
 }
 
-void App::toolsTab() {
-    const Project* project = selectedProject();
-    if (project && !project->valid) project = nullptr;
-    if (m_catalog.tools().empty()) {
-        // No empty table: say where tools come from (the folder only here, not as a permanent line)
-        ImGui::Spacing();
-        ImGui::TextUnformatted(tr("No tools installed."));
-        ImGui::TextDisabled("%s", !releaseIndex().empty() && !m_toolReleases.empty()
-                                      ? tr("Install one from the list below.")
-                                      : tr("Unzip a tool into %LOCALAPPDATA%\\MealKit\\tools\\<tool>\\, then press F5."));
-    } else if (ImGui::BeginTable("##tools", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn(tr("Tool"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
-        ImGui::TableSetupColumn(tr("Version"), ImGuiTableColumnFlags_WidthStretch, 0.6f);
-        ImGui::TableSetupColumn(tr("Folder"), ImGuiTableColumnFlags_WidthStretch, 2.0f);
-        ImGui::TableSetupColumn("##open", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Open    ").x * 1.5f);
-        ImGui::TableHeadersRow();
-        for (const Tool& t : m_catalog.tools()) {
-            ImGui::PushID(t.exe.c_str());
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(t.name.c_str());
-            ImGui::TableNextColumn();
-            if (t.protocol != kLiveProtocol)
-                ImGui::TextColored(theme::warning(), "%s %s", t.version.c_str(), tr("(protocol differs)"));
-            else ImGui::TextUnformatted(t.version.c_str());
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled("%s", t.folder.c_str());
-            ImGui::TableNextColumn();
-            const std::string openTip = project ? trf("Opens with %s", project->name.c_str()) : std::string();
-            if (iconButton(kIconLaunch, tr("Open"), true, project ? openTip.c_str() : nullptr)) {
-                std::vector<std::string> args = {t.exe};
-                if (project) args.insert(args.end(), {"--project", project->directory});
-                std::string error;
-                if (!launchDetached(args, error)) {
-                    setStatus(trf("Cannot start %s: %s", t.name.c_str(), error.c_str()), true);
-                }
+namespace {
+// Glyph for a tool's tile, by the words in its name (Segoe Fluent Icons)
+const char* toolGlyph(const std::string& name) {
+    std::string lower = name;
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (lower.find("audio") != std::string::npos) return "\xEE\x9D\xA7";  // U+E767 Volume
+    if (lower.find("ui") != std::string::npos) return "\xEE\x9F\xB4";     // U+E7F4 TVMonitor
+    if (lower.find("render") != std::string::npos) return "\xEE\x9E\x90"; // U+E790 Color
+    if (lower.find("qa") != std::string::npos) return "\xEE\xA6\xA9";     // U+E9D9 Diagnostic
+    return "\xEE\xB1\xBA";                                               // U+EC7A DeveloperTools
+}
+} // namespace
+
+std::vector<App::ToolRowView> App::toolRows() const {
+    std::vector<ToolRowView> rows;
+    auto find = [&](const std::string& name) -> ToolRowView& {
+        for (ToolRowView& r : rows)
+            if (r.name == name) return r;
+        rows.push_back({});
+        rows.back().name = name;
+        return rows.back();
+    };
+    for (const Tool& t : m_catalog.tools()) find(t.name).installed = &t;
+    if (!releaseIndex().empty())
+        for (const ToolRelease& r : m_toolReleases) {
+            ToolRowView& row = find(r.name);
+            const bool matches = m_catalog.toolMatches(r);
+            if (!row.release || (matches && !row.matches) || (matches == row.matches && versionLess(row.release->version, r.version))) {
+                row.release = &r;
+                row.matches = matches;
             }
-            ImGui::PopID();
         }
-        ImGui::EndTable();
+    std::stable_sort(rows.begin(), rows.end(), [](const ToolRowView& a, const ToolRowView& b) { return a.name < b.name; });
+    return rows;
+}
+
+bool App::toolUpdatable(const ToolRowView& row) const {
+    return row.installed && row.release && row.matches && versionLess(row.installed->version, row.release->version);
+}
+
+// Installs one tool from the release index, or queues it behind the running job (one job at a time)
+void App::installTool(const std::string& name) {
+    if (m_job.running()) {
+        if (std::find(m_toolQueue.begin(), m_toolQueue.end(), name) == m_toolQueue.end()) m_toolQueue.push_back(name);
+        return;
+    }
+    std::string version;
+    for (const ToolRowView& row : toolRows())
+        if (row.name == name && row.release) version = row.release->version;
+    if (m_job.start(trf("Install %s %s", name.c_str(), version.c_str()),
+                    powershellArgs(installerScript(), {"tool", "-Index", releaseIndex(), "-Name", name, "-Root", toolsRoot()}))) {
+        m_jobInstallsTool = name;
+        m_status.clear();
+        m_jobOutput.clear();
+    }
+}
+
+void App::launchTool(const Tool& tool, const std::string& project) {
+    std::vector<std::string> args = {tool.exe};
+    if (!project.empty()) args.insert(args.end(), {"--project", project});
+    std::string error;
+    if (!launchDetached(args, error)) setStatus(trf("Cannot start %s: %s", tool.name.c_str(), error.c_str()), true);
+}
+
+// The project a tool opens with: the selected one, else the first project in the list that exists
+std::string App::toolProject() const {
+    if (const Project* p = selectedProject(); p && p->valid) return p->directory;
+    for (const Project& p : m_catalog.projects())
+        if (p.valid) return p.directory;
+    return {};
+}
+
+// Tools page (docs/UX_REVIEW.md 3.6): every tool of the release index and every installed one in one list, each row with one state button
+void App::toolsTab() {
+    const std::vector<ToolRowView> rows = toolRows();
+    const bool busy = m_job.running();
+    if (rows.empty()) {
+        // No empty table: say where tools come from
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        const char* title = tr("No tools installed.");
+        const char* hint = tr("Unzip a tool into %LOCALAPPDATA%\\MealKit\\tools\\<tool>\\, then press F5.");
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + avail.y * 0.35f);
+        ImGui::SetCursorPosX((avail.x - ImGui::CalcTextSize(title).x) * 0.5f);
+        ImGui::TextUnformatted(title);
+        ImGui::SetCursorPosX((avail.x - ImGui::CalcTextSize(hint).x) * 0.5f);
+        ImGui::TextDisabled("%s", hint);
+        return;
     }
 
-    // Tools in the release index. Offered only when they match an installed engine; an update waits until the tool and the editor are closed
-    if (releaseIndex().empty() || m_toolReleases.empty()) return;
-    ImGui::Spacing();
-    ImGui::SeparatorText(tr("Install"));
-    if (ImGui::BeginTable("##toolreleases", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn(tr("Tool"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
-        ImGui::TableSetupColumn(tr("Version"), ImGuiTableColumnFlags_WidthStretch, 0.6f);
-        ImGui::TableSetupColumn(tr("Works with"), ImGuiTableColumnFlags_WidthStretch, 2.0f);
-        ImGui::TableSetupColumn("##install", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Update to 0.00.00").x * 1.3f);
-        ImGui::TableHeadersRow();
-        for (const ToolRelease& r : m_toolReleases) {
-            ImGui::PushID(r.name.c_str());
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(r.name.c_str());
-            ImGui::TableNextColumn();
-            ImGui::Text("%s  (%.0f MB)", r.version.c_str(), static_cast<double>(r.size) / (1024.0 * 1024.0));
-            ImGui::TableNextColumn();
-            std::string engines;
-            for (const std::string& e : r.engines) engines += (engines.empty() ? "" : ", ") + e;
-            ImGui::TextDisabled(tr("engine %s"), engines.c_str());
-            ImGui::TableNextColumn();
-            const Tool* installed = m_catalog.installedTool(r.name);
-            const bool newer = !installed || versionLess(installed->version, r.version);
-            if (!newer) ImGui::TextUnformatted(tr("installed"));
-            else if (!m_catalog.toolMatches(r)) ImGui::TextDisabled("%s", r.protocol != kLiveProtocol ? tr("needs another Manager") : tr("no matching engine"));
-            else {
-                ImGui::BeginDisabled(m_job.running());
-                const std::string label = installed ? trf("Update to %s", r.version.c_str()) : std::string(tr("Install"));
-                if (iconButton(installed ? kIconSync : kIconDownload, label, true, nullptr, installed ? r.version : std::string()) &&
-                    m_job.start(trf("Install %s %s", r.name.c_str(), r.version.c_str()),
-                                powershellArgs(installerScript(), {"tool", "-Index", releaseIndex(), "-Name", r.name, "-Root", toolsRoot()}))) {
-                    m_status.clear();
-                    m_jobOutput.clear();
+    // Updates: one line with [Update All] (installed one after another)
+    int updates = 0;
+    for (const ToolRowView& row : rows) updates += toolUpdatable(row) ? 1 : 0;
+    if (updates > 0) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(theme::accent(), "%s", trf("%d update(s)", updates).c_str());
+        ImGui::SameLine();
+        ImGui::BeginDisabled(busy);
+        if (actionButton(kIconSync, tr("Update All"))) {
+            for (const ToolRowView& row : rows)
+                if (toolUpdatable(row)) installTool(row.name);
+        }
+        ImGui::EndDisabled();
+        ImGui::Spacing();
+    }
+
+    const float dpi = ImGui::GetStyle().FontScaleDpi;
+    const float rowHeight = 56.0f * dpi;
+    const float tile = 36.0f * dpi;
+    const float pad = 10.0f * dpi;
+    const std::string project = toolProject();
+    const Project* projectInfo = nullptr;
+    for (const Project& p : m_catalog.projects())
+        if (sameDirectory(p.directory, project)) projectInfo = &p;
+    for (const ToolRowView& row : rows) {
+        ImGui::PushID(row.name.c_str());
+        const ImVec2 rowPos = ImGui::GetCursorScreenPos();
+        const float rowWidth = ImGui::GetContentRegionAvail().x;
+        ImGui::PushStyleColor(ImGuiCol_Header, theme::gray(5));
+        ImGui::Selectable("##row", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(rowWidth, rowHeight));
+        ImGui::PopStyleColor();
+        if (row.installed) ImGui::SetItemTooltip("%s", row.installed->folder.c_str());
+        const ImVec2 after = ImGui::GetCursorScreenPos();
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+
+        // Tool tile: its glyph on a rounded square (the suite icon family)
+        const ImVec2 t0(rowPos.x + pad, rowPos.y + (rowHeight - tile) * 0.5f);
+        draw->AddRectFilled(t0, ImVec2(t0.x + tile, t0.y + tile), ImGui::GetColorU32(row.installed ? theme::gray(6) : theme::gray(4)), 8.0f * dpi);
+        if (iconFont) {
+            const char* glyph = toolGlyph(row.name);
+            const ImVec2 g = ImGui::CalcTextSize(glyph);
+            draw->AddText(ImVec2(t0.x + (tile - g.x) * 0.5f, t0.y + (tile - g.y) * 0.5f), ImGui::GetColorU32(theme::gray(12)), glyph);
+        }
+
+        // Right side: More (installed only), then the one state button or the reason there is none
+        const float button = ImGui::GetFrameHeight();
+        float right = rowPos.x + rowWidth - pad - button;
+        if (row.installed) {
+            ImGui::SetCursorScreenPos(ImVec2(right, rowPos.y + (rowHeight - button) * 0.5f));
+            if (iconButton(kIconMore, tr("More"))) ImGui::OpenPopup("##more");
+            if (ImGui::BeginPopup("##more")) {
+                if (ImGui::MenuItem(iconLabel(kIconFolderOpen, tr("Show Folder")).c_str())) SDL_OpenURL(("file:///" + row.installed->folder).c_str());
+                const bool ours = sameDirectory(row.installed->folder, pathJoin(toolsRoot(), row.name));
+                ImGui::BeginDisabled(busy || !ours);
+                if (ImGui::MenuItem(iconLabel(kIconRemove, tr("Uninstall...")).c_str())) m_confirmUninstall = row.name;
+                ImGui::EndDisabled();
+                if (!ours) ImGui::SetItemTooltip("%s", tr("Found through a toolPath line: remove it from that folder."));
+                ImGui::EndPopup();
+            }
+        }
+        right -= 8.0f * dpi;
+
+        enum class Kind { None, Open, Install, Update, InstallEngine, Settings } kind = Kind::None;
+        std::string label, reason;
+        const Release* engineRelease = nullptr;
+        if (row.installed && row.installed->protocol != kLiveProtocol) {
+            reason = tr("Made for another MealKit Manager");
+            if (row.release && row.matches) kind = Kind::Update, label = trf("Update to %s", row.release->version.c_str());
+        } else if (toolUpdatable(row)) {
+            kind = Kind::Update;
+            label = trf("Update to %s", row.release->version.c_str());
+        } else if (row.installed) {
+            kind = Kind::Open;
+            label = tr("Open");
+        } else if (row.release && row.matches) {
+            kind = Kind::Install;
+            label = trf("Install  %.0f MB", static_cast<double>(row.release->size) / (1024.0 * 1024.0));
+        } else if (row.release && row.release->protocol != kLiveProtocol) {
+            kind = Kind::Settings;
+            label = tr("Update MealKit Manager");
+            reason = tr("Needs a newer MealKit Manager");
+        } else if (row.release) {
+            // No installed engine fits: offer the newest engine of a MINOR the tool lists
+            for (const Release& r : m_releases)
+                if (std::find(row.release->engines.begin(), row.release->engines.end(), minorOf(r.version)) != row.release->engines.end() &&
+                    (!engineRelease || versionLess(engineRelease->version, r.version)))
+                    engineRelease = &r;
+            std::string list;
+            for (const std::string& e : row.release->engines) list += (list.empty() ? "" : ", ") + e;
+            reason = trf("Needs engine %s", list.c_str());
+            if (engineRelease) kind = Kind::InstallEngine, label = trf("Install Engine %s", engineRelease->version.c_str());
+        }
+
+        if (kind != Kind::None) {
+            const char* glyph = kind == Kind::Open ? kIconLaunch : kind == Kind::Update ? kIconSync : kind == Kind::Settings ? kIconSettings : kIconDownload;
+            float w;
+            {
+                theme::FontScope font(theme::kBody, true);
+                w = ImGui::CalcTextSize(iconLabel(glyph, label.c_str()).c_str()).x + ImGui::GetStyle().FramePadding.x * 2;
+            }
+            const float arrow = kind == Kind::Open ? button : 0.0f;
+            right -= w + arrow;
+            ImGui::SetCursorScreenPos(ImVec2(right, rowPos.y + (rowHeight - button) * 0.5f));
+            ImGui::BeginDisabled(busy && kind != Kind::Open && kind != Kind::Settings);
+            const std::string openTip = projectInfo ? trf("Opens with %s", projectInfo->name.c_str()) : std::string();
+            if (actionButton(glyph, label, false, kind == Kind::Open && projectInfo ? openTip.c_str() : nullptr)) {
+                if (kind == Kind::Open) launchTool(*row.installed, project);
+                else if (kind == Kind::Install || kind == Kind::Update) installTool(row.name);
+                else if (kind == Kind::InstallEngine) installEngine(*engineRelease);
+                else if (kind == Kind::Settings) m_openSettings = true;
+            }
+            ImGui::EndDisabled();
+            if (kind == Kind::Open) {
+                // Split button: the arrow picks another project to open with
+                ImGui::SetCursorScreenPos(ImVec2(right + w, rowPos.y + (rowHeight - button) * 0.5f));
+                if (iconButton(kIconChevronDown, tr("Open with..."))) ImGui::OpenPopup("##openwith");
+                if (ImGui::BeginPopup("##openwith")) {
+                    int shown = 0;
+                    for (const Project& p : m_catalog.projects()) {
+                        if (!p.valid || shown >= 12) continue;
+                        ++shown;
+                        if (ImGui::MenuItem(p.name.c_str())) launchTool(*row.installed, p.directory);
+                        ImGui::SetItemTooltip("%s", p.directory.c_str());
+                    }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem(tr("Without a project"))) launchTool(*row.installed, {});
+                    ImGui::EndPopup();
+                }
+            }
+            right -= 12.0f * dpi;
+        }
+        if (!reason.empty()) {
+            right -= ImGui::CalcTextSize(reason.c_str()).x;
+            draw->AddText(ImVec2(right, rowPos.y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f), ImGui::GetColorU32(theme::warning()), reason.c_str());
+            right -= 12.0f * dpi;
+        }
+
+        // Name, then the version line: installed, installed -> newer, or the version to install
+        const float textX = t0.x + tile + pad;
+        std::string version;
+        if (row.installed && toolUpdatable(row)) version = row.installed->version + "  ->  " + row.release->version;
+        else if (row.installed) version = row.installed->version;
+        else if (row.release) version = trf("%s, not installed", row.release->version.c_str());
+        draw->PushClipRect(ImVec2(textX, rowPos.y), ImVec2(std::max(textX, right), rowPos.y + rowHeight), true);
+        {
+            theme::FontScope font(theme::kBody, true);
+            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f - ImGui::GetTextLineHeight() - 1.0f * dpi), ImGui::GetColorU32(theme::gray(12)),
+                          row.name.c_str());
+        }
+        {
+            theme::FontScope font(theme::kCaption);
+            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f + 2.0f * dpi), ImGui::GetColorU32(theme::gray(11)), version.c_str());
+        }
+        draw->PopClipRect();
+        ImGui::SetCursorScreenPos(after);
+        ImGui::Dummy(ImVec2(0, 2.0f * dpi));
+        ImGui::PopID();
+    }
+
+    // Uninstall asks first: project files are not touched
+    if (!m_confirmUninstall.empty() && !ImGui::IsPopupOpen("##uninstall")) ImGui::OpenPopup("##uninstall");
+    if (ImGui::BeginPopupModal("##uninstall", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        {
+            theme::FontScope font(theme::kBody, true);
+            ImGui::TextUnformatted(trf("Uninstall %s?", m_confirmUninstall.c_str()).c_str());
+        }
+        ImGui::TextDisabled("%s", tr("Your projects and their files stay as they are."));
+        ImGui::Spacing();
+        bool close = false;
+        if (actionButton(kIconRemove, tr("Uninstall"), true)) {
+            if (m_job.start(trf("Uninstall %s", m_confirmUninstall.c_str()),
+                            powershellArgs(installerScript(), {"removetool", "-Name", m_confirmUninstall, "-Root", toolsRoot()}))) {
+                m_status.clear();
+                m_jobOutput.clear();
+            }
+            close = true;
+        }
+        ImGui::SameLine();
+        if (actionButton(kIconCancel, tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape)) close = true;
+        if (close) {
+            m_confirmUninstall.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+// Project row menu: Open with a tool. Tools that aren't installed yet are installed first, then opened
+void App::openWithMenu(const Project& p, bool busy) {
+    const std::vector<ToolRowView> rows = toolRows();
+    if (rows.empty()) return;
+    ImGui::BeginDisabled(!p.valid);
+    if (ImGui::BeginMenu(iconLabel(kIconTools, tr("Open with Tool")).c_str())) {
+        for (const ToolRowView& row : rows) {
+            if (row.installed && row.installed->protocol == kLiveProtocol) {
+                if (ImGui::MenuItem(row.name.c_str())) launchTool(*row.installed, p.directory);
+            } else if (!row.installed && row.release && row.matches) {
+                ImGui::BeginDisabled(busy);
+                if (ImGui::MenuItem(trf("Install %s, then open", row.name.c_str()).c_str())) {
+                    m_openAfterInstall = row.name;
+                    m_openAfterInstallProject = p.directory;
+                    installTool(row.name);
                 }
                 ImGui::EndDisabled();
             }
-            ImGui::PopID();
         }
-        ImGui::EndTable();
+        ImGui::EndMenu();
     }
+    ImGui::EndDisabled();
 }
 
 void App::newProjectPopup() {

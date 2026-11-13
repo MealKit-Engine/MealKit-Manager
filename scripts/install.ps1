@@ -5,6 +5,7 @@
 #                                                                            last line: installed<TAB><folder>
 #                                                                            also tool<TAB>name<TAB>version<TAB>size<TAB>url<TAB>sha256<TAB>protocol<TAB>engines,
 #                                                                            manager<TAB>version<TAB>size<TAB>url<TAB>sha256
+#   install.ps1 removetool -Name <tool> -Root <tools>                      → deletes <Root>\<tool> (refused while it runs); projects are untouched
 #   install.ps1 tool -Index <url|path> -Name <tool> -Root <tools>         → installs or updates <Root>\<tool> (refused while it or the editor runs),
 #                                                                            last line: installed<TAB><folder>
 #   install.ps1 self -From <folder> -To <folder>                           → copies the Manager (exe, this script) from a downloaded package
@@ -22,7 +23,7 @@
 # MEALKIT_SHORTCUT_DIR puts both shortcuts in that folder instead, MEALKIT_UNINSTALL_KEY renames the uninstall entry (tests).
 # The index is engine tools\release_index.ps1's format 1. url may be http(s), file:/// or a plain path (local tests).
 param(
-    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine", "tool", "self", "shortcuts", "check", "update", "uninstall")][string]$Command,
+    [Parameter(Mandatory = $true, Position = 0)][ValidateSet("list", "engine", "tool", "removetool", "self", "shortcuts", "check", "update", "uninstall")][string]$Command,
     [string]$Name = "",
     [string]$Index = "",
     [string]$Version = "",
@@ -112,6 +113,19 @@ if ($Command -eq "uninstall") {
     exit 0
 }
 
+if ($Command -eq "removetool") {
+    if (-not $Name -or -not $Root) { Fail "removetool needs -Name and -Root" }
+    $target = Join-Path $Root $Name
+    if (-not (Test-Path (Join-Path $target "mealkit-tool.txt"))) { Fail "$target is not an installed tool." }
+    $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $p = $null; try { $p = $_.Path } catch {}
+        $p -and $p.StartsWith($target + "\", [StringComparison]::OrdinalIgnoreCase) })
+    if ($running.Count) { Fail ("Close {0} first: it is running." -f $Name) }
+    try { Remove-Item -LiteralPath $target -Recurse -Force }
+    catch { Fail "Could not remove ${target}: $($_.Exception.Message)" }
+    Write-Output "removed`t$target"
+    exit 0
+}
 if ($Command -eq "check") {
     # The same lookup the engine's tools\build.ps1 does (vswhere, the VC x64 tools component). MEALKIT_VSWHERE overrides vswhere (tests)
     $vswhere = if ($env:MEALKIT_VSWHERE) { $env:MEALKIT_VSWHERE } else { Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe" }

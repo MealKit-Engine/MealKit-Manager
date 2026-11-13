@@ -38,6 +38,7 @@ inline constexpr const char* kIconTools = "\xEE\xB1\xBA";    // U+EC7A Developer
 inline constexpr const char* kIconSettings = "\xEE\x9C\x93"; // U+E713 Setting
 inline constexpr const char* kIconCancel = "\xEE\x9C\x91";   // U+E711 close, dismiss
 inline constexpr const char* kIconEdit = "\xEE\x9C\x8F";     // U+E70F edit, rename
+inline constexpr const char* kIconChevronDown = "\xEE\x9C\x8D"; // U+E70D more choices of a split button
 
 class App {
 public:
@@ -84,6 +85,23 @@ private:
     void pickIcon(const std::string& project);
     void takePickedIcon();
     void resetIcon(const std::string& project);
+    // Tools page (docs/UX_REVIEW.md 3.6): installed tools and the release index's tools merged by name
+    struct ToolRowView {
+        std::string name;
+        const Tool* installed = nullptr;
+        const ToolRelease* release = nullptr; // the newest that matches an installed engine, else the newest listed
+        bool matches = false;
+    };
+    std::vector<ToolRowView> toolRows() const;
+    bool toolUpdatable(const ToolRowView& row) const;
+    void installTool(const std::string& name);
+    void launchTool(const Tool& tool, const std::string& project);
+    std::string toolProject() const;
+    void openWithMenu(const Project& p, bool busy);
+    std::vector<std::string> m_toolQueue; // tools waiting to install ([Update All])
+    std::string m_jobInstallsTool;        // the running job installs this tool
+    std::string m_openAfterInstall, m_openAfterInstallProject;
+    std::string m_confirmUninstall;
     // Renaming in place (docs/UX_REVIEW.md 3.2): click the selected row's name or F2, Enter asks, then the engine's tools\rename_project.ps1
     std::string m_renaming;  // project folder whose name is being edited
     char m_renameText[64] = {};

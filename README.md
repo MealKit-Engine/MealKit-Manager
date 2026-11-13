@@ -6,7 +6,7 @@ Hub app for the [MealKit](https://github.com/MealKit-Engine/MealKit) tool family
 
 - **Projects**: recent and favorite projects (the same list the editor keeps), search, create a new project, import a folder, open it in its engine's editor, upgrade it when the engine is newer, show the folder. A project's modules are managed in the editor's [Modules] window.
 - **Settings > Engines**: the engines your projects point to, plus folders you add. Builds an engine's editor when it is missing. Installs engines from the release index (`scripts/install.ps1`: download, SHA-256 check, extract) without building them.
-- **Tools**: MealKit tools found by their `mealkit-tool.txt` manifest (for example MkAudio), opened with the selected project.
+- **Tools**: every MealKit tool of the release index (MkAudio, MkUI, MkRender, ...) and every installed one in one list, each with one button: install (matched to an installed engine), update, or open with a project (the arrow picks another). Update All, uninstall, and a project's More > Open with Tool (installs first when needed).
 
 The Manager does not link the engine. It talks to it only through files and command lines, so one Manager works with every engine version:
 
