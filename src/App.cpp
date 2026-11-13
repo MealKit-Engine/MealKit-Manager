@@ -328,7 +328,19 @@ void App::header() {
         ImGui::SetCursorPosY(top + (height - ImGui::GetTextLineHeight()) * 0.5f);
         ImGui::TextUnformatted("MealKit");
     }
-    ImGui::SetItemTooltip("MealKit Manager %s\n%s", MKMANAGER_VERSION, userDirectory().c_str());
+    // A newer Manager: a dot after the name, and the name opens Settings > General where [Update and Restart] is (docs/UX_REVIEW.md 3.3)
+    if (managerUpdateAvailable()) {
+        const ImVec2 nameMax = ImGui::GetItemRectMax(), nameMin = ImGui::GetItemRectMin();
+        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(nameMax.x + 7.0f * dpi, nameMin.y + 6.0f * dpi), 3.5f * dpi, ImGui::GetColorU32(theme::accent()));
+        ImGui::SetCursorScreenPos(nameMin);
+        if (ImGui::InvisibleButton("##update", ImVec2(nameMax.x - nameMin.x + 12.0f * dpi, nameMax.y - nameMin.y))) {
+            m_settingsPage = SettingsPage::General;
+            m_openSettings = true;
+        }
+        ImGui::SetItemTooltip("%s", trf("MealKit Manager %s is available.", m_managerRelease.version.c_str()).c_str());
+    } else {
+        ImGui::SetItemTooltip("MealKit Manager %s\n%s", MKMANAGER_VERSION, userDirectory().c_str());
+    }
 
     // Segmented switch: a gray 3 pill holding two buttons, the current one gray 5
     struct Item {
@@ -379,13 +391,10 @@ void App::header() {
     }
     ImGui::PopStyleVar(3);
 
-    // Settings, with a dot when a newer Manager is in the release index
+    // Settings
     const float button = ImGui::GetFrameHeight();
     ImGui::SetCursorPos(ImVec2(ImGui::GetContentRegionMax().x - button, top + (height - button) * 0.5f));
-    const ImVec2 gear = ImGui::GetCursorScreenPos();
-    if (iconButton(kIconSettings, tr("Settings"), false, managerUpdateAvailable() ? tr("A new MealKit Manager is available.") : "Ctrl+,")) m_openSettings = true;
-    if (managerUpdateAvailable())
-        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(gear.x + button - 5.0f * dpi, gear.y + 5.0f * dpi), 3.5f * dpi, ImGui::GetColorU32(theme::accent()));
+    if (iconButton(kIconSettings, tr("Settings"), false, "Ctrl+,")) m_openSettings = true;
     ImGui::SetCursorPosY(top + height + 4.0f * dpi);
 }
 
