@@ -278,6 +278,7 @@ void App::drawWindow() {
     if (strip) statusBar();
     newProjectPopup();
     settingsPopup();
+    renamePopup();
     ImGui::End();
 }
 
@@ -445,6 +446,57 @@ void App::removeMissingProjects() {
     reload();
 }
 
+// The engine's own sample projects (no engine line: they live in the engine repo) can't be renamed (rename_project.ps1 refuses too)
+bool App::canRename(const Project& p) const {
+    const Engine* engine = p.valid ? m_catalog.engineFor(p) : nullptr;
+    return engine && !p.engine.empty() && fileExists(pathJoin(engine->directory, "tools\\rename_project.ps1"));
+}
+
+// An editor running on the project (its live info file and a live process)
+bool App::editorOpen(const std::string& project) const {
+    for (const mkcontract::live::Instance& i : mkcontract::live::findInstances(project))
+        if (i.kind == "editor" && processAlive(i.pid)) return true;
+    return false;
+}
+
+void App::startRename(const Project& p) {
+    if (!canRename(p)) return;
+    m_renaming = p.directory;
+    std::snprintf(m_renameText, sizeof(m_renameText), "%s", p.name.c_str());
+    m_renameFocus = true;
+    m_renameActive = false;
+}
+
+void App::renamePopup() {
+    if (!m_confirmRenameFor.empty() && !ImGui::IsPopupOpen("##rename")) ImGui::OpenPopup("##rename");
+    if (!ImGui::BeginPopupModal("##rename", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) return;
+    const Project* project = nullptr;
+    for (const Project& p : m_catalog.projects())
+        if (sameDirectory(p.directory, m_confirmRenameFor)) project = &p;
+    if (project) {
+        theme::FontScope font(theme::kBody, true);
+        ImGui::TextUnformatted(trf("Rename %s to %s?", project->name.c_str(), m_confirmRenameTo.c_str()).c_str());
+    }
+    ImGui::TextDisabled("%s", tr("The exe name changes too, and the build folder is deleted: the game is rebuilt when it opens."));
+    ImGui::Spacing();
+    bool close = false;
+    if (actionButton(kIconEdit, tr("Rename"), true) && project) {
+        const Engine* engine = m_catalog.engineFor(*project);
+        if (editorOpen(project->directory)) setStatus(trf("Close the editor of %s first, then rename it.", project->name.c_str()), true);
+        else if (engine)
+            runScript(trf("Rename %s", project->name.c_str()), pathJoin(engine->directory, "tools\\rename_project.ps1"),
+                      {"-Project", project->directory, "-Name", m_confirmRenameTo});
+        close = true;
+    }
+    ImGui::SameLine();
+    if (actionButton(kIconCancel, tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape)) close = true;
+    if (close) {
+        m_confirmRenameFor.clear();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
 void App::projectMenu(const Project& p, bool busy) {
     ImGui::BeginDisabled(busy || !p.valid);
     if (ImGui::MenuItem(iconLabel(kIconLaunch, tr("Open in Editor")).c_str(), "Enter")) requestRow(p.directory, RowAction::Open);
@@ -453,6 +505,9 @@ void App::projectMenu(const Project& p, bool busy) {
     if (ImGui::MenuItem(iconLabel(kIconFolderOpen, tr("Show Folder")).c_str())) SDL_OpenURL(("file:///" + p.directory).c_str());
     ImGui::EndDisabled();
     if (ImGui::MenuItem(iconLabel(kIconCopy, tr("Copy Path")).c_str())) SDL_SetClipboardText(p.directory.c_str());
+    ImGui::BeginDisabled(busy || !canRename(p));
+    if (ImGui::MenuItem(iconLabel(kIconEdit, tr("Rename")).c_str(), "F2")) startRename(p);
+    ImGui::EndDisabled();
     ImGui::BeginDisabled(!p.valid);
     if (ImGui::MenuItem(iconLabel(kIconEdit, tr("Change Icon...")).c_str())) pickIcon(p.directory);
     ImGui::EndDisabled();
@@ -674,6 +729,7 @@ void App::projectList(bool busy) {
             if (p.valid && !busy && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)))
                 requestRow(p.directory, RowAction::Open);
             if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) m_pendingRemove = p.directory;
+            if (!busy && ImGui::IsKeyPressed(ImGuiKey_F2, false)) startRename(p);
         }
         if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) m_selected = p.directory;
         if (ImGui::BeginPopupContextItem("##menu")) {
@@ -789,8 +845,49 @@ void App::projectList(bool busy) {
             const size_t slash = p.directory.find_last_of("\\/");
             name = slash == std::string::npos ? p.directory : p.directory.substr(slash + 1);
         }
+        const bool renaming = sameDirectory(m_renaming, p.directory);
+        if (renaming) {
+            // In place: Enter asks to rename, Esc or clicking elsewhere cancels; the name rules show while typing
+            theme::FontScope font(theme::kBody, true);
+            const bool ok = validGameName(m_renameText);
+            ImGui::SetCursorScreenPos(ImVec2(textX - ImGui::GetStyle().FramePadding.x, rowPos.y + rowHeight * 0.5f - ImGui::GetFrameHeight() + 2.0f * dpi));
+            ImGui::SetNextItemWidth(std::min(textRight - textX, 320.0f * dpi));
+            if (m_renameFocus) {
+                ImGui::SetKeyboardFocusHere();
+                m_renameFocus = false;
+            }
+            if (!ok) ImGui::PushStyleColor(ImGuiCol_Border, theme::danger());
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, ok ? 0.0f : 1.0f);
+            const bool enter = ImGui::InputText("##name", m_renameText, sizeof(m_renameText), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+            const bool wasActive = m_renameActive; // focus lands a frame later, so "not active" only cancels after it was active
+            m_renameActive = ImGui::IsItemActive();
+            ImGui::PopStyleVar();
+            if (!ok) {
+                ImGui::PopStyleColor();
+                ImGui::SetItemTooltip("%s", tr("Start with a letter; letters, digits and _ only (it becomes the exe name)."));
+            }
+            if (enter && ok) {
+                if (p.name != m_renameText) {
+                    m_confirmRenameFor = p.directory;
+                    m_confirmRenameTo = m_renameText;
+                }
+                m_renaming.clear();
+            } else if (ImGui::IsKeyPressed(ImGuiKey_Escape) || (wasActive && !m_renameActive)) {
+                m_renaming.clear();
+            }
+        } else if (isSelected && canRename(p) && !busy) {
+            // Clicking the selected row's name starts renaming (a first click only selects, like Explorer)
+            theme::FontScope font(theme::kBody, true);
+            const ImVec2 size(std::min(ImGui::CalcTextSize(name.c_str()).x, textRight - textX), ImGui::GetTextLineHeight());
+            ImGui::SetCursorScreenPos(ImVec2(textX, rowPos.y + rowHeight * 0.5f - size.y - 1.0f * dpi));
+            if (size.x > 0 && ImGui::InvisibleButton("##rename", size)) startRename(p);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
+                ImGui::SetTooltip("%s", tr("Rename  (F2)"));
+            }
+        }
         draw->PushClipRect(ImVec2(textX, rowPos.y), ImVec2(textRight, rowPos.y + rowHeight), true);
-        {
+        if (!renaming) {
             theme::FontScope font(theme::kBody, true);
             draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f - ImGui::GetTextLineHeight() - 1.0f * dpi),
                           ImGui::GetColorU32(p.valid ? theme::gray(12) : theme::gray(11)), name.c_str());

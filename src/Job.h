@@ -36,6 +36,9 @@ private:
 // Launches a program without waiting (editor, tools). A reason on failure
 bool launchDetached(const std::vector<std::string>& args, std::string& error);
 
+// true while a process with this id runs (live info files can outlive their editor)
+bool processAlive(unsigned pid);
+
 // Arguments for running PowerShell scripts (Windows PowerShell 5.1, bypassing the execution policy)
 std::vector<std::string> powershellArgs(const std::string& script, const std::vector<std::string>& args);
 

@@ -2,6 +2,14 @@
 
 #include <SDL3/SDL.h>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <signal.h>
+#endif
+
 namespace mkmanager {
 namespace {
 
@@ -74,6 +82,20 @@ bool launchDetached(const std::vector<std::string>& args, std::string& error) {
     }
     SDL_DestroyProcess(process); // the process keeps running
     return true;
+}
+
+bool processAlive(unsigned pid) {
+    if (pid == 0) return false;
+#ifdef _WIN32
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return false;
+    DWORD code = 0;
+    const bool alive = GetExitCodeProcess(process, &code) && code == STILL_ACTIVE;
+    CloseHandle(process);
+    return alive;
+#else
+    return kill(static_cast<pid_t>(pid), 0) == 0;
+#endif
 }
 
 std::vector<std::string> powershellArgs(const std::string& script, const std::vector<std::string>& args) {

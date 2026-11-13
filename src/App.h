@@ -83,6 +83,16 @@ private:
     void pickIcon(const std::string& project);
     void takePickedIcon();
     void resetIcon(const std::string& project);
+    // Renaming in place (docs/UX_REVIEW.md 3.2): click the selected row's name or F2, Enter asks, then the engine's tools\rename_project.ps1
+    std::string m_renaming;  // project folder whose name is being edited
+    char m_renameText[64] = {};
+    bool m_renameFocus = false;
+    bool m_renameActive = false;
+    std::string m_confirmRenameFor, m_confirmRenameTo;
+    void startRename(const Project& p);
+    void renamePopup();
+    bool canRename(const Project& p) const;
+    bool editorOpen(const std::string& project) const;
     void projectTile(const Project& p, float size);
     void reload();
     void finishJob();

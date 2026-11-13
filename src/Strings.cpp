@@ -14,6 +14,12 @@ struct Pair {
 
 // When new text is shown on screen, add its Korean here (tests/CatalogTests.cpp checks that all tr text in App.cpp exists)
 constexpr Pair kKorean[] = {
+    {"Rename", "이름 바꾸기"},
+    {"Rename  (F2)", "이름 바꾸기  (F2)"},
+    {"Rename %s", "%s 이름 바꾸기"},
+    {"Rename %s to %s?", "%s의 이름을 %s(으)로 바꿀까요?"},
+    {"The exe name changes too, and the build folder is deleted: the game is rebuilt when it opens.", "exe 이름도 바뀌고 build 폴더를 지워요. 열 때 게임을 다시 빌드해요."},
+    {"Close the editor of %s first, then rename it.", "%s 에디터를 먼저 닫고 이름을 바꿔 주세요."},
     {"Change Icon...", "아이콘 바꾸기..."},
     {"Use Default Icon", "기본 아이콘으로"},
     {"Cannot change the icon: %s", "아이콘을 바꿀 수 없어요: %s"},
