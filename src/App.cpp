@@ -740,8 +740,13 @@ void App::projectsTab() {
         return;
     }
 
-    int missing = 0;
-    for (const Project& p : projects) missing += p.valid ? 0 : 1;
+    // Projects whose folder is gone and throwaway ones in %TEMP% stay out of the list until asked for (favorites always show)
+    int missing = 0, temp = 0;
+    for (const Project& p : projects) {
+        if (p.favorite) continue;
+        if (!p.valid) ++missing;
+        else if (p.temp) ++temp;
+    }
 
     if (m_focusSearch || (!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_F))) {
         ImGui::SetKeyboardFocusHere();
@@ -792,13 +797,25 @@ void App::projectsTab() {
     if (actionButton(kIconAdd, tr("New Project"), true, "Ctrl+N")) m_openNew = true;
     ImGui::EndDisabled();
     ImGui::Dummy(ImVec2(0, 2.0f));
-    if (missing > 0) {
+    if (missing + temp > 0 && !m_search[0]) {
+        // One quiet line, not a red warning: these are leftovers, not something wrong with the user's games
+        std::string what;
+        if (missing > 0) what = trf("folder gone %d", missing);
+        if (temp > 0) what += (what.empty() ? "" : ", ") + trf("temp folder %d", temp);
         ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(theme::danger(), "%s", trf("%d project(s) whose folder can't be found", missing).c_str());
+        ImGui::TextColored(theme::gray(11), "%s", (m_showHidden ? trf("Showing %d hidden project(s) (%s)", missing + temp, what.c_str())
+                                                                : trf("%d project(s) hidden (%s)", missing + temp, what.c_str()))
+                                                      .c_str());
         ImGui::SameLine();
-        if (iconButton(kIconRemove, tr("Remove from List"), true, tr("Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted)."),
-                       tr("Remove from List")))
-            removeMissingProjects();
+        if (iconButton(m_showHidden ? kIconHide : kIconView, m_showHidden ? tr("Hide") : tr("Show"), true,
+                       tr("Projects whose folder is gone, or that live in the temp folder"), m_showHidden ? tr("Hide") : tr("Show")))
+            m_showHidden = !m_showHidden;
+        if (missing > 0) {
+            ImGui::SameLine();
+            if (iconButton(kIconRemove, tr("Remove Missing from List"), true,
+                           tr("Takes projects whose folder or mealkit.project is gone off the list (nothing is deleted)."), tr("Remove Missing from List")))
+                removeMissingProjects();
+        }
     }
 
     projectList(busy);
@@ -846,8 +863,11 @@ bool lessNoCase(const std::string& a, const std::string& b) {
 void App::projectList(bool busy) {
     // Rows that match the search, in recent order or the picked sort (favorites stay on top either way)
     std::vector<const Project*> rows;
-    for (const Project& p : m_catalog.projects())
+    // A search looks through everything; otherwise gone and %TEMP% projects wait behind [Show] (projectsTab)
+    for (const Project& p : m_catalog.projects()) {
+        if (!m_search[0] && !m_showHidden && !p.favorite && (!p.valid || p.temp)) continue;
         if (containsNoCase(p.name, m_search) || containsNoCase(p.directory, m_search)) rows.push_back(&p);
+    }
     if (m_sortColumn > 0) {
         auto less = [&](const Project* a, const Project* b) {
             if (m_sortColumn == 1) return lessNoCase(a->name, b->name);
@@ -873,15 +893,15 @@ void App::projectList(bool busy) {
     if (rows.empty()) {
         ImGui::Dummy(ImVec2(0, 24.0f));
         theme::FontScope font(theme::kBodyLarge);
-        ImGui::TextDisabled("%s", tr("No projects match the search."));
+        ImGui::TextDisabled("%s", m_search[0] ? tr("No projects match the search.") : tr("Every project here is hidden: [Show] above lists them."));
     }
 
     const float dpi = ImGui::GetStyle().FontScaleDpi;
-    // Tall rows with a big icon (a launcher list, like a hub's): the name in the large body size, the folder under it
-    const float rowHeight = 96.0f * dpi;
-    const float tile = 64.0f * dpi;
+    // Launcher rows with an icon, short enough that a usual list fits without scrolling: the name, the folder under it
+    const float rowHeight = 60.0f * dpi;
+    const float tile = 44.0f * dpi;
     const float pad = 14.0f * dpi;
-    const float nameSize = theme::kSubtitle;
+    const float nameSize = theme::kBodyLarge;
     const float pathSize = theme::kBody;
     const bool typing = ImGui::GetIO().WantTextInput;
     for (const Project* pp : rows) {
@@ -935,8 +955,8 @@ void App::projectList(bool busy) {
         // Favorite star first, always shown (off = gray outline, on = orange fill)
         // The star sits in the middle of the space before the icon (same gap on both sides), its glyph centered by its ink, not its advance
         const float button = ImGui::GetFrameHeight();
-        const float starBox = 40.0f * dpi;
-        const float starGap = 12.0f * dpi;
+        const float starBox = 32.0f * dpi;
+        const float starGap = 10.0f * dpi;
         const ImVec2 starMin(rowPos.x + starGap, rowPos.y + (rowHeight - starBox) * 0.5f);
         ImGui::SetCursorScreenPos(starMin);
         const bool starPressed = ImGui::InvisibleButton("##fav", ImVec2(starBox, starBox));
@@ -1405,6 +1425,43 @@ void App::toolsTab() {
                                           : tr("Tools work on the same project as the editor."));
     ImGui::Dummy(ImVec2(0, 8.0f * dpi));
 
+    // No release index yet and something isn't installed: say where a tool goes instead of leaving cards with no button
+    int notInstalled = 0;
+    for (const ToolRowView& row : rows) notInstalled += row.installed ? 0 : 1;
+    if (notInstalled > 0 && releaseIndex().empty()) {
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        const float pad = 14.0f * dpi;
+        const float width = ImGui::GetContentRegionAvail().x;
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        draw->ChannelsSplit(2);
+        draw->ChannelsSetCurrent(1);
+        ImGui::SetCursorScreenPos(ImVec2(pos.x + pad, pos.y + pad));
+        ImGui::BeginGroup();
+        {
+            theme::FontScope font(theme::kBody, true);
+            ImGui::TextUnformatted(tr("Tool downloads aren't published yet"));
+        }
+        ImGui::PushTextWrapPos(pos.x + width - pad - ImGui::GetWindowPos().x);
+        ImGui::TextColored(theme::gray(11), "%s",
+                           tr("To use a tool now, build it from its source ([Source] on its card) and put its folder in the tools folder. It shows up here after [Refresh]."));
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy(ImVec2(0, 2.0f * dpi));
+        if (actionButton(kIconFolderOpen, tr("Open Tools Folder"))) {
+            std::error_code ec;
+            std::filesystem::create_directories(mkcontract::pathOf(toolsRoot()), ec);
+            SDL_OpenURL(("file:///" + toolsRoot()).c_str());
+        }
+        ImGui::SameLine();
+        if (actionButton(kIconSync, tr("Refresh"))) reload();
+        ImGui::EndGroup();
+        const float bottom = ImGui::GetItemRectMax().y + pad;
+        draw->ChannelsSetCurrent(0);
+        draw->AddRectFilled(pos, ImVec2(pos.x + width, bottom), ImGui::GetColorU32(theme::gray(3)), theme::kCardRounding * dpi);
+        draw->ChannelsMerge();
+        ImGui::SetCursorScreenPos(ImVec2(pos.x, bottom));
+        ImGui::Dummy(ImVec2(0, 12.0f * dpi));
+    }
+
     // Cards in a grid that fills the width (two columns at the default window size)
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
     const bool open = ImGui::BeginChild("##tools", ImVec2(0, 0));
@@ -1487,7 +1544,7 @@ void App::toolCard(const ToolRowView& row, ImVec2 pos, ImVec2 size, const std::s
         ImGui::SetTooltip("%s", row.installed->folder.c_str());
 
     // What the button does, and the line under the name
-    enum class Kind { None, Open, Install, Update, InstallEngine, Settings } kind = Kind::None;
+    enum class Kind { None, Open, Install, Update, InstallEngine, Settings, Source } kind = Kind::None;
     std::string label, state;
     ImVec4 stateColor = theme::gray(11);
     const Release* engineRelease = nullptr;
@@ -1526,7 +1583,8 @@ void App::toolCard(const ToolRowView& row, ImVec2 pos, ImVec2 size, const std::s
         stateColor = theme::warning();
         if (engineRelease) kind = Kind::InstallEngine, label = trf("Install Engine %s", engineRelease->version.c_str());
     } else if (releaseIndex().empty()) {
-        state = tr("Not installed - no release index to install from yet");
+        state = tr("Not installed");
+        if (row.suite) kind = Kind::Source, label = tr("Source");
     } else if (m_jobListsReleases || !m_releasesFetched) {
         state = tr("Reading...");
     } else {
@@ -1587,7 +1645,11 @@ void App::toolCard(const ToolRowView& row, ImVec2 pos, ImVec2 size, const std::s
         right -= 6.0f * dpi;
     }
     if (kind != Kind::None) {
-        const char* glyph = kind == Kind::Open ? kIconLaunch : kind == Kind::Update ? kIconSync : kind == Kind::Settings ? kIconSettings : kIconDownload;
+        const char* glyph = kind == Kind::Open       ? kIconLaunch
+                            : kind == Kind::Update   ? kIconSync
+                            : kind == Kind::Settings ? kIconSettings
+                            : kind == Kind::Source   ? kIconLaunch
+                                                     : kIconDownload;
         float w;
         {
             theme::FontScope font(theme::kBody, true);
@@ -1596,12 +1658,15 @@ void App::toolCard(const ToolRowView& row, ImVec2 pos, ImVec2 size, const std::s
         const float arrow = kind == Kind::Open ? button : 0.0f;
         right -= w + arrow;
         ImGui::SetCursorScreenPos(ImVec2(right, bottomY));
-        ImGui::BeginDisabled(busy && kind != Kind::Open && kind != Kind::Settings);
-        const std::string openTip = projectInfo ? trf("Opens with %s", projectInfo->name.c_str()) : std::string();
+        ImGui::BeginDisabled(busy && kind != Kind::Open && kind != Kind::Settings && kind != Kind::Source);
+        const std::string openTip = kind == Kind::Source ? std::string(tr("Opens the tool's source repository (how to build it is in its README)"))
+                                    : kind == Kind::Open && projectInfo ? trf("Opens with %s", projectInfo->name.c_str())
+                                                         : std::string();
         // The card's one primary action: Install and Update are accent-filled, Open stays quiet (it's the usual state)
         const bool primary = kind == Kind::Install || kind == Kind::Update;
-        if (actionButton(glyph, label, primary, kind == Kind::Open && projectInfo ? openTip.c_str() : nullptr)) {
+        if (actionButton(glyph, label, primary, openTip.empty() ? nullptr : openTip.c_str())) {
             if (kind == Kind::Open) launchTool(*row.installed, project);
+            else if (kind == Kind::Source) SDL_OpenURL(("https://github.com/MealKit-Engine/" + row.name).c_str());
             else if (kind == Kind::Install || kind == Kind::Update) installTool(row.name);
             else if (kind == Kind::InstallEngine) requestEngineInstall(*engineRelease);
             else if (kind == Kind::Settings) m_openSettings = true;

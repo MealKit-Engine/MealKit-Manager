@@ -226,6 +226,17 @@ void testEngineMatching(const fs::path& root) {
     CHECK(!setProjectIcon(str(none), str(root / "fake.png"), iconError) && iconError == "not a PNG file");
 }
 
+// Projects under %TEMP% are kept out of the way in the list
+void testTempFolder(const fs::path& root) {
+    fs::path temp = fs::temp_directory_path();
+    if (!temp.has_filename()) temp = temp.parent_path(); // "...\Temp\" → "...\Temp", so parent_path() below is its parent
+    CHECK(isTempFolder(str(temp / "x" / "Probe")));      // need not exist
+    CHECK(isTempFolder(str(root)));                       // the tests' own folder is under %TEMP%
+    CHECK(!isTempFolder(str(temp.parent_path() / "TempNot" / "game")));
+    CHECK(!isTempFolder("D:\\Games\\FuseTag"));
+    CHECK(!isTempFolder(""));
+}
+
 // install.ps1 list / engine output (engine ROADMAP R2)
 void testReleases() {
     const std::vector<Release> list = parseReleaseList(
@@ -257,6 +268,7 @@ int main() {
     testKeys(root);
     testTranslations();
     testReleases();
+    testTempFolder(root);
     testEngineMatching(root);
     fs::remove_all(root, ec);
     std::printf(g_failures ? "FAILED (%d)\n" : "PASS\n", g_failures);

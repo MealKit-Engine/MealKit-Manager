@@ -92,6 +92,18 @@ std::vector<ToolRelease> parseToolReleases(const std::string& output) {
 
 std::string toolsRoot() { return joinPath(userDirectory(), "tools"); }
 
+bool isTempFolder(const std::string& directory) {
+    if (directory.empty()) return false;
+    std::error_code ec;
+    const std::filesystem::path temp = std::filesystem::temp_directory_path(ec);
+    if (ec || temp.empty()) return false;
+    // normalizeDirectory resolves the existing part, so %TEMP% in 8.3 form (C:\Users\ABCDEF~1\...) compares with long names
+    const std::string dir = normalizeDirectory(directory);
+    const std::string root = normalizeDirectory(mkcontract::utf8Of(temp));
+    if (root.empty() || dir.size() < root.size()) return false;
+    return sameDirectory(dir.substr(0, root.size()), root) && (dir.size() == root.size() || dir[root.size()] == '\\' || dir[root.size()] == '/');
+}
+
 Release parseManagerRelease(const std::string& output) {
     for (const std::string& line : lines(output)) {
         const std::vector<std::string> f = splitTabs(line);
@@ -247,6 +259,7 @@ void Catalog::load(const std::string& extraEngine) {
         readProject(dir, p);
         if (p.directory.empty()) p.directory = dir;
         p.favorite = mkcontract::containsDirectory(favorites, p.directory);
+        p.temp = isTempFolder(p.directory);
         m_projects.push_back(std::move(p));
     }
     // Favorites first, and within them by recency (list order) as is

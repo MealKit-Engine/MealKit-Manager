@@ -42,6 +42,8 @@ inline constexpr const char* kIconSettings = "\xEE\x9C\x93"; // U+E713 Setting
 inline constexpr const char* kIconCancel = "\xEE\x9C\x91";   // U+E711 close, dismiss
 inline constexpr const char* kIconEdit = "\xEE\x9C\x8F";     // U+E70F edit, rename
 inline constexpr const char* kIconChevronDown = "\xEE\x9C\x8D"; // U+E70D more choices of a split button
+inline constexpr const char* kIconView = "\xEE\xA2\x90";        // U+E890 show hidden items
+inline constexpr const char* kIconHide = "\xEE\xB4\x9A";        // U+ED1A hide them again
 
 class App {
 public:
@@ -185,6 +187,7 @@ private:
     // [Projects] tab list: column sort (-1 = recent order; favorites stay on top) and keyboard
     int m_sortColumn = -1;
     bool m_sortAscending = true;
+    bool m_showHidden = false; // the list also shows projects whose folder is gone or that live in %TEMP%
     bool m_focusSearch = false;
     // Changes picked while drawing the list, applied after it (reload rebuilds the list, so pointers into it die)
     std::string m_pendingRemove;

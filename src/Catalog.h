@@ -24,6 +24,7 @@ struct Project {
     std::string icon;          // mealkit.project "icon" (relative path; blank = icon.png)
     bool valid = false;        // the folder has mealkit.project with a name
     bool favorite = false;
+    bool temp = false;         // inside %TEMP% (isTempFolder): kept out of the way in the list
 };
 
 struct Engine {
@@ -68,6 +69,8 @@ struct ToolRelease {
 std::vector<ToolRelease> parseToolReleases(const std::string& output);
 // Where installed tools go: <user folder>\tools\<tool> (where the editor's [Tools] menu and this Manager look)
 std::string toolsRoot();
+// The folder is inside this PC's temp folder (%TEMP%): throwaway and test projects the project list keeps out of the way
+bool isTempFolder(const std::string& directory);
 // The index's MealKit Manager entry, "manager<TAB>version<TAB>size<TAB>url<TAB>sha256" (version blank if none)
 Release parseManagerRelease(const std::string& output);
 // Folder from the "installed<TAB><folder>" line of install.ps1 engine (blank if none)
