@@ -9,7 +9,8 @@
 #                                                                            last line: installed<TAB><folder>
 #   install.ps1 self -From <folder> -To <folder>                           → copies the Manager (exe, this script) from a downloaded package
 #                                                                            into To (%LOCALAPPDATA%\MealKit\manager) and makes the shortcuts
-#   install.ps1 shortcuts -To <folder>                                     → Start menu + desktop shortcuts to <To>\MealKitManager.exe
+#   install.ps1 shortcuts -To <folder>                                     → Start menu shortcut to <To>\MealKitManager.exe, the desktop one
+#                                                                            only on the first install (deleting it keeps it deleted)
 #                                                                            (only the Manager gets shortcuts: engine docs/DECISIONS.md "How the Manager installs")
 #                                                                            and registers it in Windows "Installed apps" (uninstall entry)
 #   install.ps1 check                                                      → compiler<TAB>ok|missing<TAB><Visual Studio folder>
@@ -62,6 +63,9 @@ function Shortcut-Folders {
     if ($env:MEALKIT_SHORTCUT_DIR) { return @($env:MEALKIT_SHORTCUT_DIR) }
     return @([Environment]::GetFolderPath("Programs"), [Environment]::GetFolderPath("DesktopDirectory")) # Start menu (current user), desktop
 }
+# The desktop shortcut is made once per install: a later install/update refreshes only the Start menu one, so a desktop
+# shortcut the user deleted stays deleted. The marker lives in To, so uninstalling (which removes To) starts over
+function Desktop-Marker([string]$to) { return Join-Path $to "desktop_shortcut.txt" }
 function Uninstall-Key {
     $name = if ($env:MEALKIT_UNINSTALL_KEY) { $env:MEALKIT_UNINSTALL_KEY } else { "MealKitManager" }
     return "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$name"
@@ -81,7 +85,16 @@ function Register([string]$to) {
 function Make-Shortcuts([string]$to) {
     $exe = Join-Path $to "MealKitManager.exe"
     if (-not (Test-Path $exe)) { Fail "$exe not found" }
-    foreach ($folder in Shortcut-Folders) { Make-Shortcut $folder $exe }
+    if ($env:MEALKIT_SHORTCUT_DIR) { Make-Shortcut $env:MEALKIT_SHORTCUT_DIR $exe }
+    else {
+        Make-Shortcut ([Environment]::GetFolderPath("Programs")) $exe
+        $marker = Desktop-Marker $to
+        if (-not (Test-Path $marker)) {
+            $desktop = [Environment]::GetFolderPath("DesktopDirectory")
+            if (-not (Test-Path (Join-Path $desktop "MealKit Manager.lnk"))) { Make-Shortcut $desktop $exe }
+            Set-Content -LiteralPath $marker -Value "The desktop shortcut was made once; install.ps1 doesn't make it again." -Encoding utf8
+        }
+    }
     Register $to
 }
 

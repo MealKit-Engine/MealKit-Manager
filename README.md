@@ -4,9 +4,8 @@ Hub app for the [MealKit](https://github.com/MealKit-Engine/MealKit) tool family
 
 > **Beta (v0.x).** MealKit is under active development: APIs and file formats may change between versions until v1.0, and projects are moved forward with the upgrade tool. Feedback and bug reports are welcome.
 
-- **Projects**: recent and favorite projects (the same list the editor keeps), search, create a new project, import a folder, open it in its engine's editor, upgrade it when the engine is newer, show the folder.
-- **Modules**: the source modules of the selected project and the module registry ([MealKit-Modules](https://github.com/MealKit-Engine/MealKit-Modules)). Add, update and remove run the project's engine `tools\module.ps1`.
-- **Engines**: the engines your projects point to, plus folders you add. Builds an engine's editor when it is missing. Installs engines from the release index (`scripts/install.ps1`: download, SHA-256 check, extract) without building them.
+- **Projects**: recent and favorite projects (the same list the editor keeps), search, create a new project, import a folder, open it in its engine's editor, upgrade it when the engine is newer, show the folder. A project's modules are managed in the editor's [Modules] window.
+- **Settings > Engines**: the engines your projects point to, plus folders you add. Builds an engine's editor when it is missing. Installs engines from the release index (`scripts/install.ps1`: download, SHA-256 check, extract) without building them.
 - **Tools**: MealKit tools found by their `mealkit-tool.txt` manifest (for example MkAudio), opened with the selected project.
 
 The Manager does not link the engine. It talks to it only through files and command lines, so one Manager works with every engine version:
@@ -19,7 +18,6 @@ The Manager does not link the engine. It talks to it only through files and comm
 | a project's engine | `mealkit.project`: `engine <folder>`, `engineVersion <version>` |
 | an engine | `VERSION`, `build\Editor\bin\MealKitEditor.exe`, `tools\new_project.ps1`, `tools\upgrade_project.ps1` |
 | tools | `%LOCALAPPDATA%\MealKit\tools\<tool>\mealkit-tool.txt` |
-| a project's modules and the registry | `tools\module.ps1 search -Tsv -Project <folder>` (one line per module), `add`/`update`/`remove`. The engine caches the registry list in `%LOCALAPPDATA%\MealKit\module-index.json` |
 
 When the MealKit editor is started without `--project`, it starts an installed Manager (`%LOCALAPPDATA%\MealKit\manager\MealKitManager.exe --engine <that engine>`) instead of its own project manager.
 

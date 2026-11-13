@@ -1,5 +1,5 @@
 // MealKit Manager executable: SDL3 window + SDL_Renderer + Dear ImGui (same framework as the MkAudio tool). The actual screen is App.
-//   MealKitManager [--engine <engine folder>] [--lang ko|en] [--modules <project folder>] [--frames N --capture <png>]   (--modules: start on the [Modules] tab, --engines / --tools: on that tab)
+//   MealKitManager [--engine <engine folder>] [--lang ko|en] [--frames N --capture <png>]   (--engines: open Settings > Engines, --tools: start on the Tools page)
 //   MealKitManager --list      prints project/engine/tool lists without a window (for tests/scripts)
 //   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty]   new project without a window (same script as the screen's [New Project])
 //   MealKitManager --open <project folder>                         opens that project in its engine's editor without a window
@@ -41,45 +41,39 @@ namespace {
 // The MealKit editor's look (module-debug ImGuiLayer.cpp applyStyle), copied since the Manager doesn't link the engine.
 // Keep the two in step: neutral dark layers, panels on a darker gutter, the accent color only for selection and active states.
 void applyEditorStyle(float scale) {
+    namespace theme = mkmanager::theme;
     ImGui::StyleColorsDark();
     ImGuiStyle& s = ImGui::GetStyle();
-    // Spacing of an occasional screen (TOOL_DESIGN 3.1): 4 px grid, 32 px controls, 8 px rounding for panels and popups
-    s.WindowRounding = 8.0f;
-    s.ChildRounding = 8.0f;
-    s.PopupRounding = 8.0f;
-    s.FrameRounding = 4.0f;
-    s.GrabRounding = 3.0f;
-    s.TabRounding = 4.0f;
+    // Spectrum 2 shape: 8 px fields, 10 px cards and popups, pill buttons (App pushes kPillRounding), 4 px grid
+    s.WindowRounding = theme::kCardRounding;
+    s.ChildRounding = theme::kCardRounding;
+    s.PopupRounding = theme::kCardRounding;
+    s.FrameRounding = theme::kFieldRounding;
+    s.GrabRounding = 4.0f;
+    s.TabRounding = theme::kFieldRounding;
     s.ScrollbarRounding = 6.0f;
     s.ScrollbarSize = 10.0f;
     s.WindowBorderSize = 0.0f; // the Manager's one window fills the OS window
-    s.ChildBorderSize = 1.0f;
+    s.ChildBorderSize = 0.0f;  // S2 separates layers by color, not outlines
     s.PopupBorderSize = 1.0f;
+    s.FrameBorderSize = 0.0f;
     s.TabBarBorderSize = 0.0f;
     s.TabBarOverlineSize = 0.0f;
-    s.WindowPadding = ImVec2(16.0f, 16.0f);
-    s.FramePadding = ImVec2(12.0f, 8.0f);
+    s.WindowPadding = ImVec2(24.0f, 20.0f);
+    s.FramePadding = ImVec2(14.0f, 8.0f);
     s.ItemSpacing = ImVec2(8.0f, 8.0f);
     s.ItemInnerSpacing = ImVec2(8.0f, 4.0f);
-    s.CellPadding = ImVec2(8.0f, 6.0f);
+    s.CellPadding = ImVec2(10.0f, 8.0f);
     s.IndentSpacing = 16.0f;
-    // Tokens of engine docs/TOOL_DESIGN.md 3.1: Radix slateDark (gray 1..12) and blueDark. Pick a step by its job, never a color by eye
-    const auto rgb = [](unsigned v, float a = 1.0f) {
-        return ImVec4(((v >> 16) & 0xFF) / 255.0f, ((v >> 8) & 0xFF) / 255.0f, (v & 0xFF) / 255.0f, a);
-    };
-    const auto gray = [&](int step) {
-        static constexpr unsigned kSlate[13] = {0, 0x111113, 0x18191B, 0x212225, 0x272A2D, 0x2E3135, 0x363A3F,
-                                           0x43484E, 0x5A6169, 0x696E77, 0x777B84, 0xB0B4BA, 0xEDEEF0};
-        return rgb(kSlate[step]);
-    };
+    s.SeparatorTextBorderSize = 1.0f;
+    s.SeparatorTextPadding = ImVec2(0.0f, 4.0f);
+    const auto gray = theme::gray;
     const ImVec4 clear(0.0f, 0.0f, 0.0f, 0.0f);
-    const ImVec4 blue8 = rgb(0x2870BD); // focus, selection
-    const ImVec4 blue9 = rgb(0x0090FF); // primary button, check marks
     ImVec4* c = s.Colors;
     c[ImGuiCol_Text] = gray(12);
-    c[ImGuiCol_TextDisabled] = gray(11); // secondary text: paths, dates, hints
-    c[ImGuiCol_TextSelectedBg] = rgb(0x2870BD, 0.45f);
-    c[ImGuiCol_WindowBg] = gray(1); // App draws each page on a panel-colored child
+    c[ImGuiCol_TextDisabled] = gray(11); // secondary text: dates, hints
+    c[ImGuiCol_TextSelectedBg] = theme::rgb(0x3B63FB, 0.45f);
+    c[ImGuiCol_WindowBg] = gray(1); // App draws each page on a layer-1 child
     c[ImGuiCol_ChildBg] = gray(2);
     c[ImGuiCol_PopupBg] = gray(3);
     c[ImGuiCol_Border] = gray(6);
@@ -88,30 +82,29 @@ void applyEditorStyle(float scale) {
     c[ImGuiCol_TitleBg] = gray(1);
     c[ImGuiCol_TitleBgActive] = gray(1);
     c[ImGuiCol_TitleBgCollapsed] = gray(1);
-    // Hover is one neutral step up, pressed and selected one more; the accent never fills a hovered control
-    c[ImGuiCol_FrameBg] = gray(3);
-    c[ImGuiCol_FrameBgHovered] = gray(4);
-    c[ImGuiCol_FrameBgActive] = gray(5);
+    // Hover is one neutral step up, selected one more; the accent fills only the primary button and selection marks
+    c[ImGuiCol_FrameBg] = gray(4); // fields and buttons share a step, so a combo and its arrow read as one control
+    c[ImGuiCol_FrameBgHovered] = gray(5);
+    c[ImGuiCol_FrameBgActive] = gray(6);
     c[ImGuiCol_Header] = gray(5);
     c[ImGuiCol_HeaderHovered] = gray(4);
     c[ImGuiCol_HeaderActive] = gray(6);
-    c[ImGuiCol_Button] = gray(3);
-    c[ImGuiCol_ButtonHovered] = gray(4);
-    c[ImGuiCol_ButtonActive] = gray(5);
-    c[ImGuiCol_CheckMark] = blue9;
-    c[ImGuiCol_SliderGrab] = gray(8);
-    c[ImGuiCol_SliderGrabActive] = blue9;
-    c[ImGuiCol_Separator] = gray(6);
-    c[ImGuiCol_SeparatorHovered] = blue8;
-    c[ImGuiCol_SeparatorActive] = blue9;
+    c[ImGuiCol_Button] = gray(4);
+    c[ImGuiCol_ButtonHovered] = gray(6);
+    c[ImGuiCol_ButtonActive] = gray(7);
+    c[ImGuiCol_CheckMark] = theme::accent();
+    c[ImGuiCol_SliderGrab] = gray(9);
+    c[ImGuiCol_SliderGrabActive] = theme::accent();
+    c[ImGuiCol_Separator] = gray(5);
+    c[ImGuiCol_SeparatorHovered] = theme::focus();
+    c[ImGuiCol_SeparatorActive] = theme::accent();
     c[ImGuiCol_ResizeGrip] = clear;
-    c[ImGuiCol_ResizeGripHovered] = blue8;
-    c[ImGuiCol_ResizeGripActive] = blue9;
+    c[ImGuiCol_ResizeGripHovered] = theme::focus();
+    c[ImGuiCol_ResizeGripActive] = theme::accent();
     c[ImGuiCol_ScrollbarBg] = clear;
     c[ImGuiCol_ScrollbarGrab] = gray(6);
     c[ImGuiCol_ScrollbarGrabHovered] = gray(7);
     c[ImGuiCol_ScrollbarGrabActive] = gray(8);
-    // The selected tab joins its panel; the others sit on the strip
     c[ImGuiCol_Tab] = clear;
     c[ImGuiCol_TabHovered] = gray(4);
     c[ImGuiCol_TabSelected] = gray(2);
@@ -119,11 +112,11 @@ void applyEditorStyle(float scale) {
     c[ImGuiCol_TabDimmed] = clear;
     c[ImGuiCol_TabDimmedSelected] = gray(2);
     c[ImGuiCol_TabDimmedSelectedOverline] = clear;
-    c[ImGuiCol_TableHeaderBg] = gray(3);
+    c[ImGuiCol_TableHeaderBg] = clear; // S2 tables: quiet header text over a line, no filled band
     c[ImGuiCol_TableBorderStrong] = gray(6);
     c[ImGuiCol_TableBorderLight] = gray(5);
-    c[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.015f);
-    c[ImGuiCol_NavCursor] = blue8;
+    c[ImGuiCol_TableRowBgAlt] = clear;
+    c[ImGuiCol_NavCursor] = theme::focus();
     s.ScaleAllSizes(scale);
     s.FontScaleDpi = scale;
 }
@@ -135,7 +128,7 @@ void applyEditorCaption(SDL_Window* window) {
     if (!hwnd) return;
     const BOOL dark = TRUE;
     DwmSetWindowAttribute(hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &dark, sizeof(dark));
-    const COLORREF caption = RGB(0x11, 0x11, 0x13);
+    const COLORREF caption = RGB(0x11, 0x11, 0x11); // theme gray 1
     DwmSetWindowAttribute(hwnd, 35 /* DWMWA_CAPTION_COLOR */, &caption, sizeof(caption));
 #else
     (void)window;
@@ -411,7 +404,7 @@ bool onSomeDisplay(const Placement& p) {
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string engine, capture, language, newName, newPath, newTemplate, open, modules;
+    std::string engine, capture, language, newName, newPath, newTemplate, open;
     long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
     bool list = false, releases = false, enginesTab = false, toolsTab = false, noLaunch = false, uninstall = false, assumeYes = false;
     std::string installVersion, installTool;
@@ -424,7 +417,6 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) frames = std::strtol(argv[++i], nullptr, 10);
         else if (std::strcmp(argv[i], "--capture") == 0 && i + 1 < argc) capture = argv[++i];
         else if (std::strcmp(argv[i], "--lang") == 0 && i + 1 < argc) language = argv[++i];
-        else if (std::strcmp(argv[i], "--modules") == 0 && i + 1 < argc) modules = argv[++i];
         else if (std::strcmp(argv[i], "--list") == 0) list = true;
         else if (std::strcmp(argv[i], "--releases") == 0) releases = true;
         else if (std::strcmp(argv[i], "--engines") == 0) enginesTab = true;
@@ -502,9 +494,8 @@ int main(int argc, char** argv) {
     app.renderer = renderer;
     app.init(engine);
     if (!language.empty()) mkmanager::setLanguage(language);
-    if (!modules.empty()) app.showModulesTab(modules);
-    if (enginesTab) app.showEnginesTab();
-    if (toolsTab) app.showToolsTab();
+    if (enginesTab) app.showEngines();
+    if (toolsTab) app.showToolsPage();
 
     long frame = 0;
     for (bool running = true; running;) {
@@ -527,7 +518,7 @@ int main(int argc, char** argv) {
         ImGui::Render();
 
         SDL_SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
-        SDL_SetRenderDrawColorFloat(renderer, 0x11 / 255.0f, 0x11 / 255.0f, 0x13 / 255.0f, 1.0f); // gray 1
+        SDL_SetRenderDrawColorFloat(renderer, 0x11 / 255.0f, 0x11 / 255.0f, 0x11 / 255.0f, 1.0f); // theme gray 1
         SDL_RenderClear(renderer);
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
         if (frames > 0 && ++frame >= frames) {

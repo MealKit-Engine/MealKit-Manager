@@ -1,13 +1,12 @@
 #pragma once
 
 // What MealKit Manager handles: projects, installed engines, tools. A data layer that knows nothing about windows/ImGui (tested by tests/CatalogTests.cpp).
-// Connects to the engine only through files. The shared ones (the user folder and its lists, tool manifests, the module list lines) are read with the
+// Connects to the engine only through files. The shared ones (the user folder and its lists, tool manifests) are read with the
 // tool contract library mkcontract (MealKit-Contract, third_party/mkcontract, its docs/CONTRACT.md), the same code the engine editor uses. Read here:
 //   mealkit.project in the project folder         name, engine (engine folder), engineVersion, created lines
 //   engine folder                                 VERSION, build\Editor\bin\MealKitEditor.exe, tools\new_project.ps1
 #include <mkcontract/Files.h>
 #include <mkcontract/Live.h>
-#include <mkcontract/Modules.h>
 #include <mkcontract/Tool.h>
 #include <mkcontract/User.h>
 
@@ -35,12 +34,6 @@ struct Engine {
 };
 
 using Tool = mkcontract::ToolManifest;
-
-// Source modules (engine docs/MODULES.md), from the engine's tools\module.ps1 search -Tsv -Project <folder>
-using mkcontract::InstalledModule;
-using mkcontract::ModuleList;
-using mkcontract::parseModuleList;
-using mkcontract::RegistryModule;
 
 inline constexpr uint32_t kLiveProtocol = mkcontract::live::kProtocol; // live connection contract version this Manager knows
 
