@@ -12,8 +12,11 @@
 struct SDL_Window;
 struct SDL_Renderer;
 struct SDL_Texture;
+struct ImVec2;
 
 namespace mkmanager {
+
+struct SuiteTool; // App.cpp: the MealKit tool family the Tools page always lists
 
 // Segoe Fluent Icons / MDL2 Assets glyphs, one per action across the suite (engine docs/TOOL_DESIGN.md "Glyphs")
 inline constexpr const char* kIconRemove = "\xEE\x9C\xB8";     // U+E738 remove from a list
@@ -86,13 +89,17 @@ private:
     void pickIcon(const std::string& project);
     void takePickedIcon();
     void resetIcon(const std::string& project);
-    // Tools page (docs/UX_REVIEW.md 3.6): installed tools and the release index's tools merged by name
+    // Tools page (docs/UX_REVIEW.md 3.6): the suite's own tools (always shown), installed tools and the release index's tools merged by name
     struct ToolRowView {
         std::string name;
+        const SuiteTool* suite = nullptr;     // one of the MealKit tool family (built-in summary and app icon)
         const Tool* installed = nullptr;
         const ToolRelease* release = nullptr; // the newest that matches an installed engine, else the newest listed
         bool matches = false;
     };
+    std::map<std::string, SDL_Texture*> m_toolIcons; // suite tools' app icons (ToolIcons.h), by name
+    SDL_Texture* suiteIcon(const SuiteTool& tool);
+    void toolCard(const ToolRowView& row, ImVec2 pos, ImVec2 size, const std::string& project, const Project* projectInfo);
     std::vector<ToolRowView> toolRows() const;
     bool toolUpdatable(const ToolRowView& row) const;
     void installTool(const std::string& name);

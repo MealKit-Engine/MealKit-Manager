@@ -3,6 +3,7 @@
 #include "Logo.h"
 #include "Strings.h"
 #include "Theme.h"
+#include "ToolIcons.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -196,6 +197,8 @@ App::~App() {
     for (auto& [folder, texture] : m_icons)
         if (texture) SDL_DestroyTexture(texture);
     if (m_logo) SDL_DestroyTexture(m_logo);
+    for (auto& [name, texture] : m_toolIcons)
+        if (texture) SDL_DestroyTexture(texture);
 }
 
 SDL_Texture* App::logoTexture() {
@@ -443,7 +446,7 @@ SDL_Texture* App::projectIcon(const Project& p) {
 void App::projectTile(const Project& p, float size) {
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     ImDrawList* draw = ImGui::GetWindowDrawList();
-    const float rounding = 8.0f * ImGui::GetStyle().FontScaleDpi;
+    const float rounding = size * 0.22f; // the same curve at any size
     SDL_Texture* texture = projectIcon(p);
     if (!texture && p.valid) texture = logoTexture();
     if (texture) {
@@ -789,9 +792,12 @@ void App::projectList(bool busy) {
     }
 
     const float dpi = ImGui::GetStyle().FontScaleDpi;
-    const float rowHeight = 52.0f * dpi;
-    const float tile = 36.0f * dpi;
-    const float pad = 10.0f * dpi;
+    // Tall rows with a big icon (a launcher list, like a hub's): the name in the large body size, the folder under it
+    const float rowHeight = 96.0f * dpi;
+    const float tile = 64.0f * dpi;
+    const float pad = 14.0f * dpi;
+    const float nameSize = theme::kSubtitle;
+    const float pathSize = theme::kBody;
     const bool typing = ImGui::GetIO().WantTextInput;
     for (const Project* pp : rows) {
         const Project& p = *pp;
@@ -840,28 +846,38 @@ void App::projectList(bool busy) {
         }
         const ImVec2 after = ImGui::GetCursorScreenPos();
         ImDrawList* draw = ImGui::GetWindowDrawList();
-        if (isSelected) {
-            const float bar = 3.0f * dpi;
-            draw->AddRectFilled(ImVec2(rowPos.x, rowPos.y + rowHeight * 0.2f), ImVec2(rowPos.x + bar, rowPos.y + rowHeight * 0.8f),
-                                ImGui::GetColorU32(theme::accent()), bar);
-        }
 
         // Favorite star first, always shown (off = gray outline, on = orange fill)
+        // The star sits in the middle of the space before the icon (same gap on both sides), its glyph centered by its ink, not its advance
         const float button = ImGui::GetFrameHeight();
-        ImGui::SetCursorScreenPos(ImVec2(rowPos.x + pad, rowPos.y + (rowHeight - button) * 0.5f));
-        const char* star = iconFont ? (p.favorite ? kIconStarFilled : kIconStar) : (p.favorite ? "\xE2\x98\x85" : "\xE2\x98\x86");
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme::gray(4));
-        ImGui::PushStyleColor(ImGuiCol_Text, p.favorite ? theme::warning() : theme::gray(9));
-        const bool starPressed = ImGui::Button((std::string(star) + "##fav").c_str(), ImVec2(button, button));
-        ImGui::PopStyleColor(3);
+        const float starBox = 40.0f * dpi;
+        const float starGap = 12.0f * dpi;
+        const ImVec2 starMin(rowPos.x + starGap, rowPos.y + (rowHeight - starBox) * 0.5f);
+        ImGui::SetCursorScreenPos(starMin);
+        const bool starPressed = ImGui::InvisibleButton("##fav", ImVec2(starBox, starBox));
+        if (ImGui::IsItemHovered())
+            draw->AddRectFilled(starMin, ImVec2(starMin.x + starBox, starMin.y + starBox), ImGui::GetColorU32(theme::gray(4)), starBox * 0.5f);
+        {
+            const char* star = iconFont ? (p.favorite ? kIconStarFilled : kIconStar) : (p.favorite ? "\xE2\x98\x85" : "\xE2\x98\x86");
+            theme::FontScope font(theme::kBodyLarge);
+            // The star glyphs are 3-byte UTF-8 (U+E734/E735, U+2605/2606)
+            const unsigned char* u = reinterpret_cast<const unsigned char*>(star);
+            const ImWchar codepoint = static_cast<ImWchar>(((u[0] & 0x0F) << 12) | ((u[1] & 0x3F) << 6) | (u[2] & 0x3F));
+            ImVec2 inkMin(0, 0), inkMax = ImGui::CalcTextSize(star);
+            if (const ImFontGlyph* glyph = ImGui::GetFontBaked()->FindGlyph(codepoint)) {
+                inkMin = ImVec2(glyph->X0, glyph->Y0);
+                inkMax = ImVec2(glyph->X1, glyph->Y1);
+            }
+            const ImVec2 at(starMin.x + (starBox - (inkMax.x - inkMin.x)) * 0.5f - inkMin.x, starMin.y + (starBox - (inkMax.y - inkMin.y)) * 0.5f - inkMin.y);
+            draw->AddText(at, ImGui::GetColorU32(p.favorite ? theme::warning() : theme::gray(9)), star);
+        }
         if (starPressed) {
             m_pendingFavorite = p.directory;
             m_pendingFavoriteOn = !p.favorite;
         }
         ImGui::SetItemTooltip("%s", tr("Favorite"));
 
-        const float tileX = rowPos.x + pad + button + 6.0f * dpi;
+        const float tileX = starMin.x + starBox + starGap;
         ImGui::SetCursorScreenPos(ImVec2(tileX, rowPos.y + (rowHeight - tile) * 0.5f));
         projectTile(p, tile);
         if (p.valid && isSelected && !busy) {
@@ -869,7 +885,7 @@ void App::projectList(bool busy) {
             ImGui::SetCursorScreenPos(tileMin);
             if (ImGui::InvisibleButton("##icon", ImVec2(tile, tile))) pickIcon(p.directory);
             if (ImGui::IsItemHovered()) {
-                draw->AddRectFilled(tileMin, tileMax, IM_COL32(0, 0, 0, 120), 8.0f * dpi);
+                draw->AddRectFilled(tileMin, tileMax, IM_COL32(0, 0, 0, 120), tile * 0.22f);
                 if (iconFont) {
                     const ImVec2 g = ImGui::CalcTextSize(kIconEdit);
                     draw->AddText(ImVec2((tileMin.x + tileMax.x - g.x) * 0.5f, (tileMin.y + tileMax.y - g.y) * 0.5f), IM_COL32_WHITE, kIconEdit);
@@ -934,14 +950,15 @@ void App::projectList(bool busy) {
         // Engine tag (like Godot's version tag), only when nothing on the row already names the engine
         const std::string version = engine ? engine->version : p.engineVersion;
         if (!actionGlyph && state.empty() && !version.empty()) {
-            theme::FontScope font(theme::kCaption);
+            theme::FontScope font(theme::kBody);
             const ImVec2 text = ImGui::CalcTextSize(version.c_str());
-            const float tagPad = 6.0f * dpi;
-            right -= text.x + tagPad * 2 + 10.0f * dpi;
-            const float y = rowPos.y + (rowHeight - text.y - 4.0f * dpi) * 0.5f;
-            draw->AddRectFilled(ImVec2(right, y), ImVec2(right + text.x + tagPad * 2, y + text.y + 4.0f * dpi), ImGui::GetColorU32(theme::gray(6)),
-                                4.0f * dpi);
-            draw->AddText(ImVec2(right + tagPad, y + 2.0f * dpi), ImGui::GetColorU32(theme::gray(11)), version.c_str());
+            const float tagPad = 8.0f * dpi;
+            const float tagV = 4.0f * dpi;
+            right -= text.x + tagPad * 2 + 12.0f * dpi;
+            const float y = rowPos.y + (rowHeight - text.y - tagV * 2) * 0.5f;
+            draw->AddRectFilled(ImVec2(right, y), ImVec2(right + text.x + tagPad * 2, y + text.y + tagV * 2), ImGui::GetColorU32(theme::gray(6)),
+                                6.0f * dpi);
+            draw->AddText(ImVec2(right + tagPad, y + tagV), ImGui::GetColorU32(theme::gray(11)), version.c_str());
         }
 
         // Name and path, clipped before the right side so nothing there is pushed out
@@ -955,9 +972,10 @@ void App::projectList(bool busy) {
         const bool renaming = sameDirectory(m_renaming, p.directory);
         if (renaming) {
             // In place: Enter asks to rename, Esc or clicking elsewhere cancels; the name rules show while typing
-            theme::FontScope font(theme::kBody, true);
+            theme::FontScope font(nameSize, true);
             const bool ok = validGameName(m_renameText);
-            ImGui::SetCursorScreenPos(ImVec2(textX - ImGui::GetStyle().FramePadding.x, rowPos.y + rowHeight * 0.5f - ImGui::GetFrameHeight() + 2.0f * dpi));
+            ImGui::SetCursorScreenPos(ImVec2(textX - ImGui::GetStyle().FramePadding.x,
+                                             rowPos.y + rowHeight * 0.5f - ImGui::GetTextLineHeight() - 2.0f * dpi - ImGui::GetStyle().FramePadding.y));
             ImGui::SetNextItemWidth(std::min(textRight - textX, 320.0f * dpi));
             if (m_renameFocus) {
                 ImGui::SetKeyboardFocusHere();
@@ -984,9 +1002,9 @@ void App::projectList(bool busy) {
             }
         } else if (isSelected && canRename(p) && !busy) {
             // Clicking the selected row's name starts renaming (a first click only selects, like Explorer)
-            theme::FontScope font(theme::kBody, true);
+            theme::FontScope font(nameSize, true);
             const ImVec2 size(std::min(ImGui::CalcTextSize(name.c_str()).x, textRight - textX), ImGui::GetTextLineHeight());
-            ImGui::SetCursorScreenPos(ImVec2(textX, rowPos.y + rowHeight * 0.5f - size.y - 1.0f * dpi));
+            ImGui::SetCursorScreenPos(ImVec2(textX, rowPos.y + rowHeight * 0.5f - size.y - 2.0f * dpi));
             if (size.x > 0 && ImGui::InvisibleButton("##rename", size)) startRename(p);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
@@ -995,9 +1013,9 @@ void App::projectList(bool busy) {
         }
         if (isSelected && !busy && (canMove(p) || !p.valid)) {
             // Clicking the selected row's folder moves the project (or, when the folder is gone, finds it)
-            theme::FontScope font(theme::kCaption);
+            theme::FontScope font(pathSize);
             const ImVec2 size(std::min(ImGui::CalcTextSize(p.directory.c_str()).x, textRight - textX), ImGui::GetTextLineHeight());
-            const ImVec2 at(textX, rowPos.y + rowHeight * 0.5f + 2.0f * dpi);
+            const ImVec2 at(textX, rowPos.y + rowHeight * 0.5f + 4.0f * dpi);
             ImGui::SetCursorScreenPos(at);
             if (size.x > 0 && ImGui::InvisibleButton("##path", size)) pickFolder(p.valid ? 5 : 4, p.directory);
             if (ImGui::IsItemHovered()) {
@@ -1008,13 +1026,13 @@ void App::projectList(bool busy) {
         }
         draw->PushClipRect(ImVec2(textX, rowPos.y), ImVec2(textRight, rowPos.y + rowHeight), true);
         if (!renaming) {
-            theme::FontScope font(theme::kBody, true);
-            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f - ImGui::GetTextLineHeight() - 1.0f * dpi),
+            theme::FontScope font(nameSize, true);
+            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f - ImGui::GetTextLineHeight() - 2.0f * dpi),
                           ImGui::GetColorU32(p.valid ? theme::gray(12) : theme::gray(11)), name.c_str());
         }
         {
-            theme::FontScope font(theme::kCaption);
-            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f + 2.0f * dpi), ImGui::GetColorU32(theme::gray(11)), p.directory.c_str());
+            theme::FontScope font(pathSize);
+            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f + 4.0f * dpi), ImGui::GetColorU32(theme::gray(11)), p.directory.c_str());
         }
         draw->PopClipRect();
 
@@ -1135,7 +1153,23 @@ void App::enginesTab() {
     }
 }
 
+// The MealKit tool family: always on the Tools page, so people see what the suite has before anything is installed or published.
+// Names are the manifests' names (each tool repo's tool/mealkit-tool.txt); the icons are their app icons (ToolIcons.h)
+struct SuiteTool {
+    const char* name;
+    const char* summary; // English source, Korean in Strings.cpp
+    const char* opens;   // the manifest's opens line, shown before the tool is installed
+    const unsigned char* png;
+    size_t pngSize;
+};
 namespace {
+const SuiteTool kSuiteTools[] = {
+    {"MkAudio", "Sound events and mixing: how each game sound plays", ".events .wav .ogg", kIconMkAudio, sizeof(kIconMkAudio)},
+    {"MkUI", "Game screens and menus: layout, styles and widgets", ".ui", kIconMkUI, sizeof(kIconMkUI)},
+    {"MkRender", "Scenes, materials, lighting and terrain", ".scene .gltf .glb", kIconMkRender, sizeof(kIconMkRender)},
+    {"MkQA", "Bug reports, crashes and replays in one list; runs scenario tests", ".rec", kIconMkQA, sizeof(kIconMkQA)},
+};
+
 // Glyph for a tool's tile, by the words in its name (Segoe Fluent Icons)
 const char* toolGlyph(const std::string& name) {
     std::string lower = name;
@@ -1157,8 +1191,27 @@ const char* withKeyword(const std::string& keyword, const std::string& name) {
 }
 } // namespace
 
+SDL_Texture* App::suiteIcon(const SuiteTool& tool) {
+    auto found = m_toolIcons.find(tool.name);
+    if (found != m_toolIcons.end()) return found->second;
+    SDL_Texture* texture = nullptr;
+    if (renderer)
+        if (SDL_Surface* surface = SDL_LoadPNG_IO(SDL_IOFromConstMem(tool.png, tool.pngSize), true)) {
+            texture = SDL_CreateTextureFromSurface(renderer, surface);
+            if (texture) SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+            SDL_DestroySurface(surface);
+        }
+    m_toolIcons[tool.name] = texture;
+    return texture;
+}
+
 std::vector<App::ToolRowView> App::toolRows() const {
     std::vector<ToolRowView> rows;
+    for (const SuiteTool& s : kSuiteTools) {
+        rows.push_back({});
+        rows.back().name = s.name;
+        rows.back().suite = &s;
+    }
     auto find = [&](const std::string& name) -> ToolRowView& {
         for (ToolRowView& r : rows)
             if (r.name == name) return r;
@@ -1176,7 +1229,9 @@ std::vector<App::ToolRowView> App::toolRows() const {
                 row.matches = matches;
             }
         }
-    std::stable_sort(rows.begin(), rows.end(), [](const ToolRowView& a, const ToolRowView& b) { return a.name < b.name; });
+    // The suite first in its own order, then other tools by name
+    std::stable_sort(rows.begin() + static_cast<std::ptrdiff_t>(std::size(kSuiteTools)), rows.end(),
+                     [](const ToolRowView& a, const ToolRowView& b) { return a.name < b.name; });
     return rows;
 }
 
@@ -1224,29 +1279,35 @@ std::string App::toolProject() const {
     return {};
 }
 
-// Tools page (docs/UX_REVIEW.md 3.6): every tool of the release index and every installed one in one list, each row with one state button
+// Tools page (docs/UX_REVIEW.md 3.6): a grid of cards, the suite's tools first (always listed), then any other installed or published tool.
+// Each card: app icon, name, state, one-line summary, the file types it opens, and one state button
 void App::toolsTab() {
     const std::vector<ToolRowView> rows = toolRows();
     const bool busy = m_job.running();
-    if (rows.empty()) {
-        // No empty table: say where tools come from
-        const ImVec2 avail = ImGui::GetContentRegionAvail();
-        const char* title = tr("No tools installed.");
-        const char* hint = tr("Unzip a tool into %LOCALAPPDATA%\\MealKit\\tools\\<tool>\\, then press F5.");
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + avail.y * 0.35f);
-        ImGui::SetCursorPosX((avail.x - ImGui::CalcTextSize(title).x) * 0.5f);
-        ImGui::TextUnformatted(title);
-        ImGui::SetCursorPosX((avail.x - ImGui::CalcTextSize(hint).x) * 0.5f);
-        ImGui::TextDisabled("%s", hint);
-        return;
-    }
+    const float dpi = ImGui::GetStyle().FontScaleDpi;
+    const std::string project = toolProject();
+    const Project* projectInfo = nullptr;
+    for (const Project& p : m_catalog.projects())
+        if (sameDirectory(p.directory, project)) projectInfo = &p;
 
-    // Updates: one line with [Update All] (installed one after another)
+    // Heading: what these are, which project [Open] uses, and [Update All] when updates wait
+    {
+        theme::FontScope font(theme::kSubtitle, true);
+        ImGui::TextUnformatted(tr("MealKit Tools"));
+    }
     int updates = 0;
     for (const ToolRowView& row : rows) updates += toolUpdatable(row) ? 1 : 0;
     if (updates > 0) {
+        const std::string count = trf("%d update(s)", updates);
+        float w;
+        {
+            theme::FontScope font(theme::kBody, true);
+            w = ImGui::CalcTextSize(iconLabel(kIconSync, tr("Update All")).c_str()).x + ImGui::GetStyle().FramePadding.x * 2;
+        }
+        const float countW = ImGui::CalcTextSize(count.c_str()).x;
+        ImGui::SameLine(ImGui::GetContentRegionMax().x - w - countW - 12.0f * dpi);
         ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(theme::accent(), "%s", trf("%d update(s)", updates).c_str());
+        ImGui::TextColored(theme::accent(), "%s", count.c_str());
         ImGui::SameLine();
         ImGui::BeginDisabled(busy);
         if (actionButton(kIconSync, tr("Update All"))) {
@@ -1254,154 +1315,35 @@ void App::toolsTab() {
                 if (toolUpdatable(row)) installTool(row.name);
         }
         ImGui::EndDisabled();
-        ImGui::Spacing();
     }
+    ImGui::TextDisabled("%s", projectInfo ? trf("Tools work on the same project as the editor. [Open] opens %s.", projectInfo->name.c_str()).c_str()
+                                          : tr("Tools work on the same project as the editor."));
+    ImGui::Dummy(ImVec2(0, 8.0f * dpi));
 
-    const float dpi = ImGui::GetStyle().FontScaleDpi;
-    const float rowHeight = 56.0f * dpi;
-    const float tile = 36.0f * dpi;
-    const float pad = 10.0f * dpi;
-    const std::string project = toolProject();
-    const Project* projectInfo = nullptr;
-    for (const Project& p : m_catalog.projects())
-        if (sameDirectory(p.directory, project)) projectInfo = &p;
-    for (const ToolRowView& row : rows) {
-        ImGui::PushID(row.name.c_str());
-        const ImVec2 rowPos = ImGui::GetCursorScreenPos();
-        const float rowWidth = ImGui::GetContentRegionAvail().x;
-        ImGui::PushStyleColor(ImGuiCol_Header, theme::gray(5));
-        ImGui::Selectable("##row", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(rowWidth, rowHeight));
-        ImGui::PopStyleColor();
-        if (row.installed) ImGui::SetItemTooltip("%s", row.installed->folder.c_str());
-        const ImVec2 after = ImGui::GetCursorScreenPos();
-        ImDrawList* draw = ImGui::GetWindowDrawList();
-
-        // Tool tile: its glyph on a rounded square (the suite icon family)
-        const ImVec2 t0(rowPos.x + pad, rowPos.y + (rowHeight - tile) * 0.5f);
-        draw->AddRectFilled(t0, ImVec2(t0.x + tile, t0.y + tile), ImGui::GetColorU32(row.installed ? theme::gray(6) : theme::gray(4)), 8.0f * dpi);
-        if (iconFont) {
-            const std::string keyword = row.installed && !row.installed->icon.empty() ? row.installed->icon : row.release ? row.release->icon : std::string();
-            const char* glyph = keyword.empty() ? toolGlyph(row.name) : withKeyword(keyword, row.name);
-            const ImVec2 g = ImGui::CalcTextSize(glyph);
-            draw->AddText(ImVec2(t0.x + (tile - g.x) * 0.5f, t0.y + (tile - g.y) * 0.5f), ImGui::GetColorU32(theme::gray(12)), glyph);
+    // Cards in a grid that fills the width (two columns at the default window size)
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+    const bool open = ImGui::BeginChild("##tools", ImVec2(0, 0));
+    ImGui::PopStyleColor();
+    if (open) {
+        const float gap = 16.0f * dpi;
+        const float avail = ImGui::GetContentRegionAvail().x;
+        const int columns = std::clamp(static_cast<int>((avail + gap) / (400.0f * dpi + gap)), 1, 3);
+        const ImVec2 cardSize((avail - gap * static_cast<float>(columns - 1)) / static_cast<float>(columns), 184.0f * dpi);
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        int i = 0;
+        for (const ToolRowView& row : rows) {
+            const int col = i % columns, line = i / columns;
+            const ImVec2 pos(origin.x + static_cast<float>(col) * (cardSize.x + gap), origin.y + static_cast<float>(line) * (cardSize.y + gap));
+            ImGui::PushID(row.name.c_str());
+            toolCard(row, pos, cardSize, project, projectInfo);
+            ImGui::PopID();
+            ++i;
         }
-
-        // Right side: More (installed only), then the one state button or the reason there is none
-        const float button = ImGui::GetFrameHeight();
-        float right = rowPos.x + rowWidth - pad - button;
-        if (row.installed) {
-            ImGui::SetCursorScreenPos(ImVec2(right, rowPos.y + (rowHeight - button) * 0.5f));
-            if (iconButton(kIconMore, tr("More"))) ImGui::OpenPopup("##more");
-            if (ImGui::BeginPopup("##more")) {
-                if (ImGui::MenuItem(iconLabel(kIconFolderOpen, tr("Show Folder")).c_str())) SDL_OpenURL(("file:///" + row.installed->folder).c_str());
-                const bool ours = sameDirectory(row.installed->folder, pathJoin(toolsRoot(), row.name));
-                ImGui::BeginDisabled(busy || !ours);
-                if (ImGui::MenuItem(iconLabel(kIconRemove, tr("Uninstall...")).c_str())) m_confirmUninstall = row.name;
-                ImGui::EndDisabled();
-                if (!ours) ImGui::SetItemTooltip("%s", tr("Found through a toolPath line: remove it from that folder."));
-                ImGui::EndPopup();
-            }
-        }
-        right -= 8.0f * dpi;
-
-        enum class Kind { None, Open, Install, Update, InstallEngine, Settings } kind = Kind::None;
-        std::string label, reason;
-        const Release* engineRelease = nullptr;
-        if (row.installed && row.installed->protocol != kLiveProtocol) {
-            reason = tr("Made for another MealKit Manager");
-            if (row.release && row.matches) kind = Kind::Update, label = trf("Update to %s", row.release->version.c_str());
-        } else if (toolUpdatable(row)) {
-            kind = Kind::Update;
-            label = trf("Update to %s", row.release->version.c_str());
-        } else if (row.installed) {
-            kind = Kind::Open;
-            label = tr("Open");
-        } else if (row.release && row.matches) {
-            kind = Kind::Install;
-            label = trf("Install  %.0f MB", static_cast<double>(row.release->size) / (1024.0 * 1024.0));
-        } else if (row.release && row.release->protocol != kLiveProtocol) {
-            kind = Kind::Settings;
-            label = tr("Update MealKit Manager");
-            reason = tr("Needs a newer MealKit Manager");
-        } else if (row.release) {
-            // No installed engine fits: offer the newest engine of a MINOR the tool lists
-            for (const Release& r : m_releases)
-                if (std::find(row.release->engines.begin(), row.release->engines.end(), minorOf(r.version)) != row.release->engines.end() &&
-                    (!engineRelease || versionLess(engineRelease->version, r.version)))
-                    engineRelease = &r;
-            std::string list;
-            for (const std::string& e : row.release->engines) list += (list.empty() ? "" : ", ") + e;
-            reason = trf("Needs engine %s", list.c_str());
-            if (engineRelease) kind = Kind::InstallEngine, label = trf("Install Engine %s", engineRelease->version.c_str());
-        }
-
-        if (kind != Kind::None) {
-            const char* glyph = kind == Kind::Open ? kIconLaunch : kind == Kind::Update ? kIconSync : kind == Kind::Settings ? kIconSettings : kIconDownload;
-            float w;
-            {
-                theme::FontScope font(theme::kBody, true);
-                w = ImGui::CalcTextSize(iconLabel(glyph, label.c_str()).c_str()).x + ImGui::GetStyle().FramePadding.x * 2;
-            }
-            const float arrow = kind == Kind::Open ? button : 0.0f;
-            right -= w + arrow;
-            ImGui::SetCursorScreenPos(ImVec2(right, rowPos.y + (rowHeight - button) * 0.5f));
-            ImGui::BeginDisabled(busy && kind != Kind::Open && kind != Kind::Settings);
-            const std::string openTip = projectInfo ? trf("Opens with %s", projectInfo->name.c_str()) : std::string();
-            if (actionButton(glyph, label, false, kind == Kind::Open && projectInfo ? openTip.c_str() : nullptr)) {
-                if (kind == Kind::Open) launchTool(*row.installed, project);
-                else if (kind == Kind::Install || kind == Kind::Update) installTool(row.name);
-                else if (kind == Kind::InstallEngine) requestEngineInstall(*engineRelease);
-                else if (kind == Kind::Settings) m_openSettings = true;
-            }
-            ImGui::EndDisabled();
-            if (kind == Kind::Open) {
-                // Split button: the arrow picks another project to open with
-                ImGui::SetCursorScreenPos(ImVec2(right + w, rowPos.y + (rowHeight - button) * 0.5f));
-                if (iconButton(kIconChevronDown, tr("Open with..."))) ImGui::OpenPopup("##openwith");
-                if (ImGui::BeginPopup("##openwith")) {
-                    int shown = 0;
-                    for (const Project& p : m_catalog.projects()) {
-                        if (!p.valid || shown >= 12) continue;
-                        ++shown;
-                        if (ImGui::MenuItem(p.name.c_str())) launchTool(*row.installed, p.directory);
-                        ImGui::SetItemTooltip("%s", p.directory.c_str());
-                    }
-                    ImGui::Separator();
-                    if (ImGui::MenuItem(tr("Without a project"))) launchTool(*row.installed, {});
-                    ImGui::EndPopup();
-                }
-            }
-            right -= 12.0f * dpi;
-        }
-        if (!reason.empty()) {
-            right -= ImGui::CalcTextSize(reason.c_str()).x;
-            draw->AddText(ImVec2(right, rowPos.y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f), ImGui::GetColorU32(theme::warning()), reason.c_str());
-            right -= 12.0f * dpi;
-        }
-
-        // Name, then the version line: installed, installed -> newer, or the version to install
-        const float textX = t0.x + tile + pad;
-        std::string version;
-        if (row.installed && toolUpdatable(row)) version = row.installed->version + "  ->  " + row.release->version;
-        else if (row.installed) version = row.installed->version;
-        else if (row.release) version = trf("%s, not installed", row.release->version.c_str());
-        const std::string summary = row.installed && !row.installed->summary.empty() ? row.installed->summary : row.release ? row.release->summary : std::string();
-        if (!summary.empty()) version = summary + "  \xC2\xB7  " + version;
-        draw->PushClipRect(ImVec2(textX, rowPos.y), ImVec2(std::max(textX, right), rowPos.y + rowHeight), true);
-        {
-            theme::FontScope font(theme::kBody, true);
-            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f - ImGui::GetTextLineHeight() - 1.0f * dpi), ImGui::GetColorU32(theme::gray(12)),
-                          row.name.c_str());
-        }
-        {
-            theme::FontScope font(theme::kCaption);
-            draw->AddText(ImVec2(textX, rowPos.y + rowHeight * 0.5f + 2.0f * dpi), ImGui::GetColorU32(theme::gray(11)), version.c_str());
-        }
-        draw->PopClipRect();
-        ImGui::SetCursorScreenPos(after);
-        ImGui::Dummy(ImVec2(0, 2.0f * dpi));
-        ImGui::PopID();
+        const int lines = (i + columns - 1) / columns;
+        ImGui::SetCursorScreenPos(origin);
+        ImGui::Dummy(ImVec2(avail, static_cast<float>(lines) * (cardSize.y + gap)));
     }
+    ImGui::EndChild();
 
     // Uninstall asks first: project files are not touched
     if (!m_confirmUninstall.empty() && !ImGui::IsPopupOpen("##uninstall")) ImGui::OpenPopup("##uninstall");
@@ -1431,10 +1373,212 @@ void App::toolsTab() {
     }
 }
 
+// One tool card: icon and name with its state, the summary, then the file types it opens and the one state button along the bottom
+void App::toolCard(const ToolRowView& row, ImVec2 pos, ImVec2 size, const std::string& project, const Project* projectInfo) {
+    const float dpi = ImGui::GetStyle().FontScaleDpi;
+    const bool busy = m_job.running();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 end(pos.x + size.x, pos.y + size.y);
+    const bool hovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(pos, end);
+    draw->AddRectFilled(pos, end, ImGui::GetColorU32(hovered ? theme::gray(4) : theme::gray(3)), theme::kCardRounding * dpi);
+    const float pad = 18.0f * dpi;
+    const float icon = 64.0f * dpi;
+    const ImVec2 i0(pos.x + pad, pos.y + pad);
+
+    // App icon (the suite's own), else a glyph tile from the manifest's icon keyword
+    if (SDL_Texture* texture = row.suite ? suiteIcon(*row.suite) : nullptr) {
+        draw->AddImage(ImTextureRef(reinterpret_cast<ImTextureID>(texture)), i0, ImVec2(i0.x + icon, i0.y + icon));
+    } else {
+        draw->AddRectFilled(i0, ImVec2(i0.x + icon, i0.y + icon), ImGui::GetColorU32(theme::gray(6)), icon * 0.22f);
+        if (iconFont) {
+            theme::FontScope font(theme::kTitle);
+            const std::string keyword = row.installed && !row.installed->icon.empty() ? row.installed->icon : row.release ? row.release->icon : std::string();
+            const char* glyph = keyword.empty() ? toolGlyph(row.name) : withKeyword(keyword, row.name);
+            const ImVec2 g = ImGui::CalcTextSize(glyph);
+            draw->AddText(ImVec2(i0.x + (icon - g.x) * 0.5f, i0.y + (icon - g.y) * 0.5f), ImGui::GetColorU32(theme::gray(12)), glyph);
+        }
+    }
+    if (row.installed && ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(i0, ImVec2(i0.x + icon, i0.y + icon)))
+        ImGui::SetTooltip("%s", row.installed->folder.c_str());
+
+    // What the button does, and the line under the name
+    enum class Kind { None, Open, Install, Update, InstallEngine, Settings } kind = Kind::None;
+    std::string label, state;
+    ImVec4 stateColor = theme::gray(11);
+    const Release* engineRelease = nullptr;
+    if (row.installed && row.installed->protocol != kLiveProtocol) {
+        state = tr("Made for another MealKit Manager");
+        stateColor = theme::warning();
+        if (row.release && row.matches) kind = Kind::Update, label = trf("Update to %s", row.release->version.c_str());
+    } else if (toolUpdatable(row)) {
+        kind = Kind::Update;
+        label = trf("Update to %s", row.release->version.c_str());
+        state = row.installed->version + "  ->  " + row.release->version;
+        stateColor = theme::accent();
+    } else if (row.installed) {
+        kind = Kind::Open;
+        label = tr("Open");
+        state = row.installed->version.empty() ? std::string(tr("Installed")) : trf("%s installed", row.installed->version.c_str());
+        stateColor = theme::good();
+    } else if (row.release && row.matches) {
+        kind = Kind::Install;
+        label = trf("Install  %.0f MB", static_cast<double>(row.release->size) / (1024.0 * 1024.0));
+        state = trf("%s, not installed", row.release->version.c_str());
+    } else if (row.release && row.release->protocol != kLiveProtocol) {
+        kind = Kind::Settings;
+        label = tr("Update MealKit Manager");
+        state = tr("Needs a newer MealKit Manager");
+        stateColor = theme::warning();
+    } else if (row.release) {
+        // No installed engine fits: offer the newest engine of a MINOR the tool lists
+        for (const Release& r : m_releases)
+            if (std::find(row.release->engines.begin(), row.release->engines.end(), minorOf(r.version)) != row.release->engines.end() &&
+                (!engineRelease || versionLess(engineRelease->version, r.version)))
+                engineRelease = &r;
+        std::string list;
+        for (const std::string& e : row.release->engines) list += (list.empty() ? "" : ", ") + e;
+        state = trf("Needs engine %s", list.c_str());
+        stateColor = theme::warning();
+        if (engineRelease) kind = Kind::InstallEngine, label = trf("Install Engine %s", engineRelease->version.c_str());
+    } else if (releaseIndex().empty()) {
+        state = tr("Not installed - no release index to install from yet");
+    } else if (m_jobListsReleases || !m_releasesFetched) {
+        state = tr("Reading...");
+    } else {
+        state = tr("Not installed - not in the release index");
+    }
+
+    // Name and state, right of the icon
+    const float textX = i0.x + icon + 16.0f * dpi;
+    draw->PushClipRect(ImVec2(textX, pos.y), ImVec2(end.x - pad, end.y), true);
+    float y = i0.y + 4.0f * dpi;
+    {
+        theme::FontScope font(theme::kSubtitle, true);
+        draw->AddText(ImVec2(textX, y), ImGui::GetColorU32(theme::gray(12)), row.name.c_str());
+        y += ImGui::GetTextLineHeight() + 6.0f * dpi;
+    }
+    {
+        theme::FontScope font(theme::kCaption);
+        float x = textX;
+        if (kind == Kind::Open) {
+            const float r = 3.5f * dpi;
+            draw->AddCircleFilled(ImVec2(x + r, y + ImGui::GetTextLineHeight() * 0.5f), r, ImGui::GetColorU32(theme::good()));
+            x += r * 2 + 6.0f * dpi;
+        }
+        draw->AddText(ImVec2(x, y), ImGui::GetColorU32(stateColor), state.c_str());
+    }
+    draw->PopClipRect();
+
+    // Summary under the icon, wrapped to the card
+    const std::string summary = row.suite ? std::string(tr(row.suite->summary))
+                                : row.installed && !row.installed->summary.empty() ? row.installed->summary
+                                : row.release ? row.release->summary
+                                              : std::string();
+    const float button = ImGui::GetFrameHeight();
+    const float bottomY = end.y - pad - button;
+    if (!summary.empty()) {
+        theme::FontScope font(theme::kBody);
+        draw->PushClipRect(pos, ImVec2(end.x, bottomY - 4.0f * dpi), true);
+        draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(i0.x, i0.y + icon + 14.0f * dpi), ImGui::GetColorU32(theme::gray(11)),
+                      summary.c_str(), nullptr, size.x - pad * 2);
+        draw->PopClipRect();
+    }
+
+    // Bottom right: More (installed only), then the state button (Open is a split button: the arrow picks the project)
+    float right = end.x - pad;
+    if (row.installed) {
+        right -= button;
+        ImGui::SetCursorScreenPos(ImVec2(right, bottomY));
+        if (iconButton(kIconMore, tr("More"))) ImGui::OpenPopup("##more");
+        if (ImGui::BeginPopup("##more")) {
+            if (ImGui::MenuItem(iconLabel(kIconFolderOpen, tr("Show Folder")).c_str())) SDL_OpenURL(("file:///" + row.installed->folder).c_str());
+            const bool ours = sameDirectory(row.installed->folder, pathJoin(toolsRoot(), row.name));
+            ImGui::BeginDisabled(busy || !ours);
+            if (ImGui::MenuItem(iconLabel(kIconRemove, tr("Uninstall...")).c_str())) m_confirmUninstall = row.name;
+            ImGui::EndDisabled();
+            if (!ours) ImGui::SetItemTooltip("%s", tr("Found through a toolPath line: remove it from that folder."));
+            ImGui::EndPopup();
+        }
+        right -= 6.0f * dpi;
+    }
+    if (kind != Kind::None) {
+        const char* glyph = kind == Kind::Open ? kIconLaunch : kind == Kind::Update ? kIconSync : kind == Kind::Settings ? kIconSettings : kIconDownload;
+        float w;
+        {
+            theme::FontScope font(theme::kBody, true);
+            w = ImGui::CalcTextSize(iconLabel(glyph, label.c_str()).c_str()).x + ImGui::GetStyle().FramePadding.x * 2;
+        }
+        const float arrow = kind == Kind::Open ? button : 0.0f;
+        right -= w + arrow;
+        ImGui::SetCursorScreenPos(ImVec2(right, bottomY));
+        ImGui::BeginDisabled(busy && kind != Kind::Open && kind != Kind::Settings);
+        const std::string openTip = projectInfo ? trf("Opens with %s", projectInfo->name.c_str()) : std::string();
+        // The card's one primary action: Install and Update are accent-filled, Open stays quiet (it's the usual state)
+        const bool primary = kind == Kind::Install || kind == Kind::Update;
+        if (actionButton(glyph, label, primary, kind == Kind::Open && projectInfo ? openTip.c_str() : nullptr)) {
+            if (kind == Kind::Open) launchTool(*row.installed, project);
+            else if (kind == Kind::Install || kind == Kind::Update) installTool(row.name);
+            else if (kind == Kind::InstallEngine) requestEngineInstall(*engineRelease);
+            else if (kind == Kind::Settings) m_openSettings = true;
+        }
+        ImGui::EndDisabled();
+        if (kind == Kind::Open) {
+            ImGui::SetCursorScreenPos(ImVec2(right + w, bottomY));
+            if (iconButton(kIconChevronDown, tr("Open with..."))) ImGui::OpenPopup("##openwith");
+            if (ImGui::BeginPopup("##openwith")) {
+                int shown = 0;
+                for (const Project& p : m_catalog.projects()) {
+                    if (!p.valid || shown >= 12) continue;
+                    ++shown;
+                    if (ImGui::MenuItem(p.name.c_str())) launchTool(*row.installed, p.directory);
+                    ImGui::SetItemTooltip("%s", p.directory.c_str());
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem(tr("Without a project"))) launchTool(*row.installed, {});
+                ImGui::EndPopup();
+            }
+        }
+    }
+
+    // Bottom left: the file types it opens, as small tags (clipped before the buttons)
+    std::vector<std::string> opens;
+    if (row.installed) opens = row.installed->opens;
+    else if (row.suite) {
+        std::string word;
+        for (const char* c = row.suite->opens;; ++c) {
+            if (*c == ' ' || *c == '\0') {
+                if (!word.empty()) opens.push_back(word);
+                word.clear();
+                if (*c == '\0') break;
+            } else {
+                word += *c;
+            }
+        }
+    }
+    if (!opens.empty()) {
+        theme::FontScope font(theme::kCaption);
+        const float tagPad = 6.0f * dpi;
+        const float tagH = ImGui::GetTextLineHeight() + 4.0f * dpi;
+        const float tagY = bottomY + (button - tagH) * 0.5f;
+        float x = i0.x;
+        draw->PushClipRect(ImVec2(x, pos.y), ImVec2(std::max(x, right - 12.0f * dpi), end.y), true);
+        for (const std::string& ext : opens) {
+            const float w = ImGui::CalcTextSize(ext.c_str()).x + tagPad * 2;
+            draw->AddRectFilled(ImVec2(x, tagY), ImVec2(x + w, tagY + tagH), ImGui::GetColorU32(theme::gray(6)), 4.0f * dpi);
+            draw->AddText(ImVec2(x + tagPad, tagY + 2.0f * dpi), ImGui::GetColorU32(theme::gray(11)), ext.c_str());
+            x += w + 6.0f * dpi;
+        }
+        draw->PopClipRect();
+        if (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(ImVec2(i0.x, tagY), ImVec2(std::min(x, right), tagY + tagH)))
+            ImGui::SetTooltip("%s", tr("File types it opens"));
+    }
+}
+
 // Project row menu: Open with a tool. Tools that aren't installed yet are installed first, then opened
 void App::openWithMenu(const Project& p, bool busy) {
     const std::vector<ToolRowView> rows = toolRows();
-    if (rows.empty()) return;
+    // Only when a tool can be opened or installed (the suite's tools are always in the rows, installed or not)
+    if (std::none_of(rows.begin(), rows.end(), [](const ToolRowView& r) { return r.installed || (r.release && r.matches); })) return;
     ImGui::BeginDisabled(!p.valid);
     if (ImGui::BeginMenu(iconLabel(kIconTools, tr("Open with Tool")).c_str())) {
         for (const ToolRowView& row : rows) {
@@ -1583,13 +1727,24 @@ void App::settingsPopup() {
         const char* label;
     };
     const Item items[] = {{SettingsPage::General, kIconSettings, tr("General")}, {SettingsPage::Engines, kIconEngines, tr("Engines")}};
-    ImGui::BeginChild("##settingsnav", ImVec2(170.0f * dpi, 0));
+    // Nav items: padded off the panel's edges, each label vertically centered with a gap from the left wall
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * dpi, 8.0f * dpi));
+    ImGui::BeginChild("##settingsnav", ImVec2(190.0f * dpi, 0), ImGuiChildFlags_AlwaysUseWindowPadding);
+    ImGui::PopStyleVar();
+    const float itemHeight = 40.0f * dpi;
     for (const Item& item : items) {
         const bool current = m_settingsPage == item.page;
+        ImGui::PushID(item.label);
         ImGui::PushStyleColor(ImGuiCol_Header, theme::gray(5));
-        theme::FontScope font(theme::kBody, current);
-        if (ImGui::Selectable(iconLabel(item.glyph, item.label).c_str(), current, 0, ImVec2(0, ImGui::GetFrameHeight()))) m_settingsPage = item.page;
+        const ImVec2 at = ImGui::GetCursorScreenPos();
+        if (ImGui::Selectable("##nav", current, 0, ImVec2(0, itemHeight))) m_settingsPage = item.page;
         ImGui::PopStyleColor();
+        theme::FontScope font(theme::kBody, current);
+        const std::string label = iconLabel(item.glyph, item.label);
+        const float textY = at.y + (itemHeight - ImGui::GetTextLineHeight()) * 0.5f;
+        ImGui::GetWindowDrawList()->AddText(ImVec2(at.x + 12.0f * dpi, textY), ImGui::GetColorU32(current ? theme::gray(12) : theme::gray(11)),
+                                            label.c_str());
+        ImGui::PopID();
     }
     ImGui::EndChild();
     ImGui::SameLine();
