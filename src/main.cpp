@@ -407,7 +407,7 @@ int main(int argc, char** argv) {
     std::string engine, capture, language, newName, newPath, newTemplate, open;
     long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
     bool list = false, releases = false, enginesTab = false, toolsTab = false, settings = false, noLaunch = false, uninstall = false, assumeYes = false;
-    std::string installVersion, installTool;
+    std::string installVersion, installTool, askEngine;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--engine") == 0 && i + 1 < argc) engine = argv[++i];
         else if (std::strcmp(argv[i], "--new") == 0 && i + 1 < argc) newName = argv[++i];
@@ -422,6 +422,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--engines") == 0) enginesTab = true;
         else if (std::strcmp(argv[i], "--tools") == 0) toolsTab = true;
         else if (std::strcmp(argv[i], "--settings") == 0) settings = true;
+        else if (std::strcmp(argv[i], "--ask-engine") == 0 && i + 1 < argc) askEngine = argv[++i];
         else if (std::strcmp(argv[i], "--no-launch") == 0) noLaunch = true;
         else if (std::strcmp(argv[i], "--uninstall") == 0) uninstall = true;
         else if (std::strcmp(argv[i], "--yes") == 0) assumeYes = true;
@@ -498,6 +499,7 @@ int main(int argc, char** argv) {
     if (enginesTab) app.showEngines();
     if (toolsTab) app.showToolsPage();
     if (settings) app.showSettings();
+    if (!askEngine.empty()) app.showEngineInstall(askEngine);
 
     long frame = 0;
     for (bool running = true; running;) {

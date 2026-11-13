@@ -58,6 +58,7 @@ public:
     }
     void showToolsPage() { m_page = Page::Tools; }
     void showSettings() { m_openSettings = true; } // --settings: General
+    void showEngineInstall(const std::string& version) { m_askEngine = version; } // --ask-engine <version>: the install dialog (screen check)
 
 private:
     enum class Page { Projects, Tools };
@@ -129,6 +130,13 @@ private:
     void statusBar();
     void openProject(const Project& project);
     void installEngine(const Release& release);
+    // Engine install asks which tools for that engine come along (docs/UX_REVIEW.md 3.6); straight to installEngine when none fit
+    void requestEngineInstall(const Release& release);
+    void engineInstallPopup();
+    Release m_engineToInstall;
+    std::string m_askEngine;
+    std::vector<std::pair<std::string, bool>> m_engineTools; // tool name, checked
+    std::vector<const ToolRelease*> toolsForEngine(const std::string& version) const;
     void runScript(const std::string& label, const std::string& script, const std::vector<std::string>& args,
                    const std::string& addOnSuccess = {});
     void pickFolder(int purpose, const std::string& project = {}); // 0 import project, 1 add engine, 2 new project location, 3 default location (settings),

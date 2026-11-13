@@ -115,6 +115,11 @@ void App::frame() {
         m_releasesFetched = true;
         if (m_job.start(tr("Engine list"), powershellArgs(installerScript(), {"list", "-Index", releaseIndex()}))) m_jobListsReleases = true;
     }
+    if (!m_askEngine.empty() && m_releasesFetched && !m_jobListsReleases) {
+        for (const Release& r : m_releases)
+            if (r.version == m_askEngine) requestEngineInstall(r);
+        m_askEngine.clear();
+    }
     drawWindow();
 }
 
@@ -181,6 +186,7 @@ void App::finishJob() {
         m_jobInstallsEngine = false;
         const std::string folder = installedFolder(m_job.output());
         if (ok && !folder.empty()) m_catalog.addEngine(folder);
+        if (!ok) m_toolQueue.clear(); // tools picked with the engine wait for it: nothing to match without it
     }
     reload();
 }
@@ -305,6 +311,7 @@ void App::drawWindow() {
     if (strip) statusBar();
     newProjectPopup();
     settingsPopup();
+    engineInstallPopup();
     renamePopup();
     movePopup();
     ImGui::End();
@@ -723,7 +730,7 @@ void App::projectsTab() {
             } else if (action == RowAction::Locate) {
                 pickFolder(4, p.directory);
             } else if (action == RowAction::InstallEngine) {
-                if (const Release* release = Catalog::releaseFor(p, m_releases)) installEngine(*release);
+                if (const Release* release = Catalog::releaseFor(p, m_releases)) requestEngineInstall(*release);
             }
             break;
         }
@@ -1109,7 +1116,7 @@ void App::enginesTab() {
             if (m_catalog.hasEngineVersion(r.version)) ImGui::TextUnformatted(tr("installed"));
             else {
                 ImGui::BeginDisabled(m_job.running());
-                if (iconButton(kIconDownload, tr("Install"), true)) installEngine(r);
+                if (iconButton(kIconDownload, tr("Install"), true)) requestEngineInstall(r);
                 ImGui::EndDisabled();
             }
             ImGui::PopID();
@@ -1315,7 +1322,7 @@ void App::toolsTab() {
             if (actionButton(glyph, label, false, kind == Kind::Open && projectInfo ? openTip.c_str() : nullptr)) {
                 if (kind == Kind::Open) launchTool(*row.installed, project);
                 else if (kind == Kind::Install || kind == Kind::Update) installTool(row.name);
-                else if (kind == Kind::InstallEngine) installEngine(*engineRelease);
+                else if (kind == Kind::InstallEngine) requestEngineInstall(*engineRelease);
                 else if (kind == Kind::Settings) m_openSettings = true;
             }
             ImGui::EndDisabled();
@@ -1623,6 +1630,77 @@ void App::generalSettings() {
     ImGui::TextDisabled("%s", userDirectory().c_str());
     ImGui::SameLine();
     if (iconButton(kIconFolderOpen, tr("Show Folder"), true)) SDL_OpenURL(("file:///" + userDirectory()).c_str());
+}
+
+// Tools of the release index made for this engine's MINOR and this Manager's protocol, not installed at that version yet (newest per name)
+std::vector<const ToolRelease*> App::toolsForEngine(const std::string& version) const {
+    std::vector<const ToolRelease*> out;
+    const std::string minor = minorOf(version);
+    for (const ToolRelease& r : m_toolReleases) {
+        if (r.protocol != kLiveProtocol || std::find(r.engines.begin(), r.engines.end(), minor) == r.engines.end()) continue;
+        const Tool* installed = m_catalog.installedTool(r.name);
+        if (installed && !versionLess(installed->version, r.version)) continue;
+        auto same = std::find_if(out.begin(), out.end(), [&](const ToolRelease* t) { return t->name == r.name; });
+        if (same == out.end()) out.push_back(&r);
+        else if (versionLess((*same)->version, r.version)) *same = &r;
+    }
+    return out;
+}
+
+void App::requestEngineInstall(const Release& release) {
+    const std::vector<const ToolRelease*> tools = toolsForEngine(release.version);
+    if (tools.empty()) {
+        installEngine(release);
+        return;
+    }
+    m_engineToInstall = release;
+    m_engineTools.clear();
+    for (const ToolRelease* t : tools) m_engineTools.push_back({t->name, true});
+}
+
+void App::engineInstallPopup() {
+    if (!m_engineTools.empty() && !ImGui::IsPopupOpen("##engineinstall")) ImGui::OpenPopup("##engineinstall");
+    if (!ImGui::BeginPopupModal("##engineinstall", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) return;
+    const std::vector<const ToolRelease*> tools = toolsForEngine(m_engineToInstall.version);
+    {
+        theme::FontScope font(theme::kBody, true);
+        ImGui::TextUnformatted(trf("Install engine %s", m_engineToInstall.version.c_str()).c_str());
+    }
+    ImGui::TextDisabled("%s", tr("Tools for this engine can come along:"));
+    ImGui::Spacing();
+    double total = static_cast<double>(m_engineToInstall.size);
+    ImGui::TextUnformatted(trf("Engine %s", m_engineToInstall.version.c_str()).c_str());
+    ImGui::SameLine();
+    ImGui::TextDisabled("%.0f MB", static_cast<double>(m_engineToInstall.size) / (1024.0 * 1024.0));
+    for (auto& [name, on] : m_engineTools) {
+        const ToolRelease* release = nullptr;
+        for (const ToolRelease* t : tools)
+            if (t->name == name) release = t;
+        if (!release) continue;
+        ImGui::Checkbox((name + " " + release->version + "##" + name).c_str(), &on);
+        ImGui::SameLine();
+        ImGui::TextDisabled("%.0f MB", static_cast<double>(release->size) / (1024.0 * 1024.0));
+        if (on) total += static_cast<double>(release->size);
+    }
+    ImGui::Separator();
+    ImGui::TextUnformatted(trf("Total %.0f MB", total / (1024.0 * 1024.0)).c_str());
+    ImGui::Spacing();
+    bool close = false;
+    ImGui::BeginDisabled(m_job.running());
+    if (actionButton(kIconDownload, tr("Install"), true)) {
+        installEngine(m_engineToInstall);
+        for (const auto& [name, on] : m_engineTools)
+            if (on) m_toolQueue.push_back(name); // after the engine: tools are matched to installed engines
+        close = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (actionButton(kIconCancel, tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape)) close = true;
+    if (close) {
+        m_engineTools.clear();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 void App::installEngine(const Release& release) {

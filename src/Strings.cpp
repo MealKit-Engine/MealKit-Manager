@@ -14,6 +14,8 @@ struct Pair {
 
 // When new text is shown on screen, add its Korean here (tests/CatalogTests.cpp checks that all tr text in App.cpp exists)
 constexpr Pair kKorean[] = {
+    {"Tools for this engine can come along:", "이 엔진용 도구도 같이 설치할 수 있어요:"},
+    {"Total %.0f MB", "합계 %.0f MB"},
     {"%d update(s)", "업데이트 %d개"},
     {"Update All", "모두 업데이트"},
     {"Uninstall...", "제거..."},
