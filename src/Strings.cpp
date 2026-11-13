@@ -14,6 +14,17 @@ struct Pair {
 
 // When new text is shown on screen, add its Korean here (tests/CatalogTests.cpp checks that all tr text in App.cpp exists)
 constexpr Pair kKorean[] = {
+    {"Move the project folder?", "프로젝트 폴더를 옮길까요?"},
+    {"The build folder is deleted (it holds absolute paths): the game is rebuilt when it opens.", "build 폴더를 지워요 (절대 경로가 들어 있어요). 열 때 게임을 다시 빌드해요."},
+    {"Move", "옮기기"},
+    {"Move %s", "%s 옮기기"},
+    {"Moved to %s", "%s(으)로 옮겼어요"},
+    {"Close the editor of %s first, then move it.", "%s 에디터를 먼저 닫고 옮겨 주세요."},
+    {"Move Folder...", "폴더 옮기기..."},
+    {"Find Folder...", "폴더 찾기..."},
+    {"Find...", "찾기..."},
+    {"Moved it? Pick where the folder is now.", "옮겼나요? 지금 폴더가 있는 곳을 골라 주세요."},
+    {"Found %s: %s", "%s을(를) 찾았어요: %s"},
     {"Rename", "이름 바꾸기"},
     {"Rename  (F2)", "이름 바꾸기  (F2)"},
     {"Rename %s", "%s 이름 바꾸기"},

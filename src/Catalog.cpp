@@ -330,5 +330,13 @@ void Catalog::addRecent(const std::string& directory) { mkcontract::addRecentPro
 void Catalog::removeRecent(const std::string& directory) { mkcontract::removeRecentProject(directory); }
 void Catalog::setFavorite(const std::string& directory, bool favorite) { mkcontract::setFavoriteProject(directory, favorite); }
 void Catalog::addEngine(const std::string& directory) { mkcontract::addEngine(directory); }
+void Catalog::replaceProject(const std::string& from, const std::string& to) {
+    bool favorite = false;
+    for (const Project& p : m_projects)
+        if (sameDirectory(p.directory, from)) favorite = p.favorite;
+    mkcontract::removeRecentProject(from); // also takes it off the favorites
+    mkcontract::addRecentProject(to);
+    if (favorite) mkcontract::setFavoriteProject(to, true);
+}
 
 } // namespace mkmanager

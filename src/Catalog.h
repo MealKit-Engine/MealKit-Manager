@@ -134,6 +134,8 @@ public:
     void addRecent(const std::string& directory);    // to the top of the list
     void removeRecent(const std::string& directory); // removed only from the list (the folder stays)
     void setFavorite(const std::string& directory, bool favorite);
+    // A project now lives in another folder (moved, or found again): the list points there, at the top, and keeps its favorite mark
+    void replaceProject(const std::string& from, const std::string& to);
     void addEngine(const std::string& directory);
 
 private:

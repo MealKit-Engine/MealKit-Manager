@@ -93,6 +93,12 @@ private:
     void renamePopup();
     bool canRename(const Project& p) const;
     bool editorOpen(const std::string& project) const;
+    // Moving (docs/UX_REVIEW.md 3.2): click the selected row's folder, pick where it goes, confirm, then the engine's tools\move_project.ps1
+    std::string m_pickProject;                  // the project a folder pick (4, 5) is for
+    std::string m_confirmMoveFor, m_confirmMoveTo;
+    std::string m_jobMoveFrom, m_jobMoveTo;     // the running move job: the list is repointed when it succeeds
+    bool canMove(const Project& p) const;
+    void movePopup();
     void projectTile(const Project& p, float size);
     void reload();
     void finishJob();
@@ -106,7 +112,8 @@ private:
     void installEngine(const Release& release);
     void runScript(const std::string& label, const std::string& script, const std::vector<std::string>& args,
                    const std::string& addOnSuccess = {});
-    void pickFolder(int purpose); // 0 = import project, 1 = add engine, 2 = new project location, 3 = default location (settings)
+    void pickFolder(int purpose, const std::string& project = {}); // 0 import project, 1 add engine, 2 new project location, 3 default location (settings),
+    //                                                         4 find a missing project (project = its listed folder), 5 move a project into a folder
     void takePickedFolder();
 
     Catalog m_catalog;
@@ -149,7 +156,7 @@ private:
     std::string m_pendingFavorite;
     bool m_pendingFavoriteOn = false;
     // Row actions (the row's buttons, Enter, double-click and the menu), run after the list is drawn
-    enum class RowAction { Open, Upgrade, InstallEngine };
+    enum class RowAction { Open, Upgrade, InstallEngine, Locate };
     std::string m_pendingAction;
     RowAction m_pendingKind = RowAction::Open;
     void requestRow(const std::string& folder, RowAction kind) {

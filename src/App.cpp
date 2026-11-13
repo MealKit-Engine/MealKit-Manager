@@ -142,6 +142,15 @@ void App::finishJob() {
         m_selected = normalizeDirectory(m_jobAdd);
     }
     m_jobAdd.clear();
+    if (!m_jobMoveFrom.empty()) {
+        if (ok) {
+            m_catalog.replaceProject(m_jobMoveFrom, m_jobMoveTo);
+            m_selected = normalizeDirectory(m_jobMoveTo);
+            setStatus(trf("Moved to %s", m_jobMoveTo.c_str()), false);
+        }
+        m_jobMoveFrom.clear();
+        m_jobMoveTo.clear();
+    }
     if (m_jobUpdatesManager) { // new files are in place: start the new Manager and quit this one
         m_jobUpdatesManager = false;
         std::string error;
@@ -279,6 +288,7 @@ void App::drawWindow() {
     newProjectPopup();
     settingsPopup();
     renamePopup();
+    movePopup();
     ImGui::End();
 }
 
@@ -459,6 +469,47 @@ bool App::editorOpen(const std::string& project) const {
     return false;
 }
 
+bool App::canMove(const Project& p) const {
+    const Engine* engine = p.valid ? m_catalog.engineFor(p) : nullptr;
+    return engine && !p.engine.empty() && fileExists(pathJoin(engine->directory, "tools\\move_project.ps1"));
+}
+
+void App::movePopup() {
+    if (!m_confirmMoveFor.empty() && !ImGui::IsPopupOpen("##move")) ImGui::OpenPopup("##move");
+    if (!ImGui::BeginPopupModal("##move", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) return;
+    const Project* project = nullptr;
+    for (const Project& p : m_catalog.projects())
+        if (sameDirectory(p.directory, m_confirmMoveFor)) project = &p;
+    {
+        theme::FontScope font(theme::kBody, true);
+        ImGui::TextUnformatted(tr("Move the project folder?"));
+    }
+    ImGui::TextUnformatted(m_confirmMoveFor.c_str());
+    ImGui::TextUnformatted(("-> " + m_confirmMoveTo).c_str());
+    ImGui::TextDisabled("%s", tr("The build folder is deleted (it holds absolute paths): the game is rebuilt when it opens."));
+    ImGui::Spacing();
+    bool close = false;
+    if (actionButton(kIconFolder, tr("Move"), true) && project) {
+        const Engine* engine = m_catalog.engineFor(*project);
+        if (editorOpen(project->directory)) setStatus(trf("Close the editor of %s first, then move it.", project->name.c_str()), true);
+        else if (engine) {
+            m_jobMoveFrom = project->directory;
+            m_jobMoveTo = m_confirmMoveTo;
+            runScript(trf("Move %s", project->name.c_str()), pathJoin(engine->directory, "tools\\move_project.ps1"),
+                      {"-Project", project->directory, "-To", m_confirmMoveTo});
+            if (!m_job.running()) m_jobMoveFrom.clear();
+        }
+        close = true;
+    }
+    ImGui::SameLine();
+    if (actionButton(kIconCancel, tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape)) close = true;
+    if (close) {
+        m_confirmMoveFor.clear();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
 void App::startRename(const Project& p) {
     if (!canRename(p)) return;
     m_renaming = p.directory;
@@ -507,6 +558,12 @@ void App::projectMenu(const Project& p, bool busy) {
     if (ImGui::MenuItem(iconLabel(kIconCopy, tr("Copy Path")).c_str())) SDL_SetClipboardText(p.directory.c_str());
     ImGui::BeginDisabled(busy || !canRename(p));
     if (ImGui::MenuItem(iconLabel(kIconEdit, tr("Rename")).c_str(), "F2")) startRename(p);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(busy || !canMove(p));
+    if (ImGui::MenuItem(iconLabel(kIconFolder, tr("Move Folder...")).c_str())) pickFolder(5, p.directory);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(p.valid);
+    if (ImGui::MenuItem(iconLabel(kIconSearch, tr("Find Folder...")).c_str())) pickFolder(4, p.directory);
     ImGui::EndDisabled();
     ImGui::BeginDisabled(!p.valid);
     if (ImGui::MenuItem(iconLabel(kIconEdit, tr("Change Icon...")).c_str())) pickIcon(p.directory);
@@ -637,6 +694,8 @@ void App::projectsTab() {
             else if (action == RowAction::Upgrade) {
                 if (const Engine* engine = m_catalog.engineFor(p))
                     runScript(tr("Upgrade"), pathJoin(engine->directory, "tools\upgrade_project.ps1"), {"-Project", p.directory});
+            } else if (action == RowAction::Locate) {
+                pickFolder(4, p.directory);
             } else if (action == RowAction::InstallEngine) {
                 if (const Release* release = Catalog::releaseFor(p, m_releases)) installEngine(*release);
             }
@@ -792,7 +851,12 @@ void App::projectList(bool busy) {
         std::string actionLabel;
         RowAction action = RowAction::Open;
         const char* actionTip = nullptr;
-        if (p.valid && !engine) {
+        if (!p.valid) {
+            actionGlyph = kIconSearch;
+            actionLabel = tr("Find...");
+            action = RowAction::Locate;
+            actionTip = tr("Moved it? Pick where the folder is now.");
+        } else if (p.valid && !engine) {
             if (const Release* release = Catalog::releaseFor(p, m_releases)) {
                 actionGlyph = kIconDownload;
                 actionLabel = trf("Install Engine %s", release->version.c_str());
@@ -884,6 +948,19 @@ void App::projectList(bool busy) {
             if (ImGui::IsItemHovered()) {
                 ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
                 ImGui::SetTooltip("%s", tr("Rename  (F2)"));
+            }
+        }
+        if (isSelected && !busy && (canMove(p) || !p.valid)) {
+            // Clicking the selected row's folder moves the project (or, when the folder is gone, finds it)
+            theme::FontScope font(theme::kCaption);
+            const ImVec2 size(std::min(ImGui::CalcTextSize(p.directory.c_str()).x, textRight - textX), ImGui::GetTextLineHeight());
+            const ImVec2 at(textX, rowPos.y + rowHeight * 0.5f + 2.0f * dpi);
+            ImGui::SetCursorScreenPos(at);
+            if (size.x > 0 && ImGui::InvisibleButton("##path", size)) pickFolder(p.valid ? 5 : 4, p.directory);
+            if (ImGui::IsItemHovered()) {
+                draw->AddRectFilled(ImVec2(at.x - 3.0f * dpi, at.y - 1.0f), ImVec2(at.x + size.x + 3.0f * dpi, at.y + size.y + 1.0f),
+                                    ImGui::GetColorU32(theme::gray(6)), 4.0f * dpi);
+                ImGui::SetTooltip("%s", p.valid ? tr("Move Folder...") : tr("Find Folder..."));
             }
         }
         draw->PushClipRect(ImVec2(textX, rowPos.y), ImVec2(textRight, rowPos.y + rowHeight), true);
@@ -1326,14 +1403,21 @@ void App::runScript(const std::string& label, const std::string& script, const s
     m_jobOutput.clear();
 }
 
-void App::pickFolder(int purpose) {
+void App::pickFolder(int purpose, const std::string& project) {
     {
         std::lock_guard<std::mutex> lock(m_pickMutex);
         m_pickPurpose = purpose;
+        m_pickProject = project;
         m_picked = "\x01"; // waiting
     }
     g_pickTarget = {&m_pickMutex, &m_picked};
-    SDL_ShowOpenFolderDialog(onFolderPicked, &g_pickTarget, window, purpose >= 2 ? m_newLocation : nullptr, false);
+    const char* start = purpose == 2 || purpose == 3 ? m_newLocation : nullptr;
+    std::string parent;
+    if (purpose == 5) {
+        parent = project.substr(0, project.find_last_of("\\/"));
+        start = parent.c_str();
+    }
+    SDL_ShowOpenFolderDialog(onFolderPicked, &g_pickTarget, window, start, false);
 }
 
 void App::takePickedFolder() {
@@ -1364,6 +1448,21 @@ void App::takePickedFolder() {
         }
         m_catalog.addEngine(e.directory);
         setStatus(trf("Added engine %s", e.version.c_str()), false);
+    } else if (purpose == 4) { // the missing project is here now
+        Project p;
+        if (!readProject(picked, p)) {
+            setStatus(trf("%s has no mealkit.project", picked.c_str()), true);
+            return;
+        }
+        m_catalog.replaceProject(m_pickProject, p.directory);
+        m_selected = p.directory;
+        setStatus(trf("Found %s: %s", p.name.c_str(), p.directory.c_str()), false);
+    } else if (purpose == 5) { // move into the picked folder, keeping the folder's own name
+        const std::string leaf = m_pickProject.substr(m_pickProject.find_last_of("\\/") + 1);
+        const std::string to = pathJoin(picked, leaf);
+        if (sameDirectory(to, m_pickProject)) return;
+        m_confirmMoveFor = m_pickProject;
+        m_confirmMoveTo = to;
     } else {
         std::snprintf(m_newLocation, sizeof(m_newLocation), "%s", picked.c_str());
         if (purpose == 3) saveProjectLocation(m_newLocation);

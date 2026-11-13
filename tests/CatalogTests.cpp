@@ -96,6 +96,17 @@ void testCatalog(const fs::path& root) {
     if (!catalog.projects().empty()) CHECK(catalog.projects()[0].name == "Game" && catalog.projects()[0].favorite);
     CHECK(readList(str(user / "favorite_projects.txt")).size() == 1); // Old was removed from favorites too
 
+    // Moved or found again: the list points at the new folder and keeps the favorite mark
+    const fs::path moved = root / "moved" / "Game";
+    write(moved / "mealkit.project", "name Game\n");
+    catalog.replaceProject(str(game), str(moved));
+    catalog.load();
+    CHECK(catalog.projects().size() == 3);
+    if (!catalog.projects().empty()) CHECK(sameDirectory(catalog.projects()[0].directory, str(moved)) && catalog.projects()[0].favorite);
+    CHECK(readList(str(user / "favorite_projects.txt")).size() == 1);
+    catalog.replaceProject(str(moved), str(game)); // back, so the rest of the test sees the same list
+    catalog.load();
+
     // Adding another engine (engines.txt); folders that aren't engines don't appear in the list
     const fs::path engine2 = root / "engine2";
     write(engine2 / "VERSION", "0.6.0\n");
