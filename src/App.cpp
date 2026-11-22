@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -553,7 +554,7 @@ const Project* App::selectedProject() const {
     return nullptr;
 }
 
-// "<glyph> label" with the editor's Segoe icon glyphs when the icon font is loaded
+// "<glyph> label" with the editor's icon glyphs (Fluent UI System Icons) when the icon font is loaded
 std::string App::iconLabel(const char* glyph, const char* label) const {
     return iconFont ? std::string(glyph) + "  " + label : std::string(label);
 }
@@ -841,7 +842,7 @@ void App::projectsTab() {
             if (action == RowAction::Open) openProject(p);
             else if (action == RowAction::Upgrade) {
                 if (const Engine* engine = m_catalog.engineFor(p))
-                    runScript(tr("Upgrade"), pathJoin(engine->directory, "tools\upgrade_project.ps1"), {"-Project", p.directory});
+                    runScript(tr("Upgrade"), pathJoin(engine->directory, "tools/upgrade_project.ps1"), {"-Project", p.directory});
             } else if (action == RowAction::Locate) {
                 pickFolder(4, p.directory);
             } else if (action == RowAction::InstallEngine) {
@@ -1275,21 +1276,21 @@ const SuiteTool kSuiteTools[] = {
     {"MkQA", "Bug reports, crashes and replays in one list; runs scenario tests", ".rec", kIconMkQA, sizeof(kIconMkQA)},
 };
 
-// Glyph for a tool's tile, by the words in its name (Segoe Fluent Icons)
+// Glyph for a tool's tile, by the words in its name (Fluent UI System Icons)
 const char* toolGlyph(const std::string& name) {
     std::string lower = name;
     for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    if (lower.find("audio") != std::string::npos) return "\xEE\x9D\xA7";  // U+E767 Volume
-    if (lower.find("ui") != std::string::npos) return "\xEE\x9F\xB4";     // U+E7F4 TVMonitor
-    if (lower.find("render") != std::string::npos) return "\xEE\x9E\x90"; // U+E790 Color
-    if (lower.find("qa") != std::string::npos) return "\xEE\xA6\xA9";     // U+E9D9 Diagnostic
-    return "\xEE\xB1\xBA";                                               // U+EC7A DeveloperTools
+    if (lower.find("audio") != std::string::npos) return "\xEE\xAD\x82";  // speaker_2 Volume
+    if (lower.find("ui") != std::string::npos) return "\xEF\x8D\x99";     // desktop TVMonitor
+    if (lower.find("render") != std::string::npos) return "\xEF\x8B\xB5"; // color Color
+    if (lower.find("qa") != std::string::npos) return "\xEF\x9C\xA4";     // stethoscope Diagnostic
+    return "\xEE\xBA\x87";                                               // wrench_screwdriver DeveloperTools
 }
 // A manifest icon keyword ("audio", "ui", "render", ...) as a glyph; unknown words fall back to the name
 const char* withKeyword(const std::string& keyword, const std::string& name) {
-    static const std::pair<const char*, const char*> glyphs[] = {{"audio", "\xEE\x9D\xA7"}, {"ui", "\xEE\x9F\xB4"}, {"render", "\xEE\x9E\x90"},
-                                                                  {"qa", "\xEE\xA6\xA9"},    {"test", "\xEE\xA6\xA9"}, {"data", "\xEE\xA3\xAF"},
-                                                                  {"map", "\xEE\x9C\x87"},   {"scene", "\xEE\xA3\xBD"}};
+    static const std::pair<const char*, const char*> glyphs[] = {{"audio", "\xEE\xAD\x82"}, {"ui", "\xEF\x8D\x99"}, {"render", "\xEF\x8B\xB5"},
+                                                                  {"qa", "\xEF\x9C\xA4"},    {"test", "\xEF\x9C\xA4"}, {"data", "\xEF\x9D\x9D"},
+                                                                  {"map", "\xEF\x93\xB8"},   {"scene", "\xEF\x9E\xAE"}};
     for (const auto& [k, g] : glyphs)
         if (keyword == k) return g;
     return toolGlyph(name);

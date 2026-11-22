@@ -146,18 +146,17 @@ ImFont* loadFontWeight(float size, const char* latinPath, const char* koreanPath
     merge.MergeMode = true;
     if (SDL_GetPathInfo(koreanPath, nullptr)) io.Fonts->AddFontFromFileTTF(koreanPath, size, &merge);
     iconFont = false;
-#if defined(_WIN32)
-    // Icons: Segoe Fluent Icons on Windows 11, Segoe MDL2 Assets on 10, the same code points as the editor
-    for (const char* path : {"C:\\Windows\\Fonts\\SegoeIcons.ttf", "C:\\Windows\\Fonts\\segmdl2.ttf"}) {
+    // Icon font (engine docs/TOOL_DESIGN.md section 2): Fluent UI System Icons beside the executable on every OS
+    // (third_party/fluent-icons, copied there by CMake)
+    {
+        const char* base = SDL_GetBasePath();
+        const std::string path = std::string(base ? base : "") + "FluentSystemIcons-Regular.ttf";
         ImFontConfig icons;
         icons.MergeMode = true;
-        icons.GlyphOffset = ImVec2(0.0f, 3.0f);
-        if (SDL_GetPathInfo(path, nullptr) && io.Fonts->AddFontFromFileTTF(path, size, &icons)) {
+        icons.GlyphOffset = ImVec2(0.0f, 2.0f);
+        if (SDL_GetPathInfo(path.c_str(), nullptr) && io.Fonts->AddFontFromFileTTF(path.c_str(), size + 1.0f, &icons))
             iconFont = true;
-            break;
-        }
     }
-#endif
     return font;
 }
 

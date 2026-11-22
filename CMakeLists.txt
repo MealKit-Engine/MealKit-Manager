@@ -68,6 +68,10 @@ endif()
 add_test(NAME mkmanager_tests COMMAND mkmanager_tests)
 
 install(TARGETS MealKitManager RUNTIME DESTINATION .)
+# Icon font (engine docs/TOOL_DESIGN.md section 2): read from beside the executable, so it is copied there and installed with it
+add_custom_command(TARGET MealKitManager POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fluent-icons/FluentSystemIcons-Regular.ttf $<TARGET_FILE_DIR:MealKitManager>)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fluent-icons/FluentSystemIcons-Regular.ttf DESTINATION .)
 # Engine installer the [Engines] tab runs (beside the exe in the build too, so build\bin works the same)
 configure_file(scripts/install.ps1 ${CMAKE_BINARY_DIR}/bin/install.ps1 COPYONLY)
 install(FILES scripts/install.ps1 DESTINATION .)

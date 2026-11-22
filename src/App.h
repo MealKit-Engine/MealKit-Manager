@@ -19,31 +19,31 @@ namespace mkmanager {
 struct SuiteTool; // App.cpp: the MealKit tool family the Tools page always lists
 
 // Segoe Fluent Icons / MDL2 Assets glyphs, one per action across the suite (engine docs/TOOL_DESIGN.md "Glyphs")
-inline constexpr const char* kIconRemove = "\xEE\x9C\xB8";     // U+E738 remove from a list
-inline constexpr const char* kIconUp = "\xEE\x9D\x8A";         // U+E74A upgrade
-inline constexpr const char* kIconCopy = "\xEE\xA3\x88";       // U+E8C8
-inline constexpr const char* kIconLaunch = "\xEE\xA2\xA7";     // U+E8A7 open in its program
-inline constexpr const char* kIconFolderOpen = "\xEE\xA0\xB8"; // U+E838 show in Explorer
-inline constexpr const char* kIconDownload = "\xEE\xA2\x96";   // U+E896 install
-inline constexpr const char* kIconSync = "\xEE\xA2\x95";       // U+E895 update
-inline constexpr const char* kIconBuild = "\xEE\xA4\x8F";      // U+E90F
-inline constexpr const char* kIconOutput = "\xEE\xA2\xA5";     // U+E8A5
-inline constexpr const char* kIconAdd = "\xEE\x9C\x90";        // U+E710
-inline constexpr const char* kIconFolder = "\xEE\xA2\xB7";     // U+E8B7
-inline constexpr const char* kIconRefresh = "\xEE\x9C\xAC";    // U+E72C
-inline constexpr const char* kIconStar = "\xEE\x9C\xB4";       // U+E734
-inline constexpr const char* kIconStarFilled = "\xEE\x9C\xB5"; // U+E735
-inline constexpr const char* kIconMore = "\xEE\x9C\x92";     // U+E712
-inline constexpr const char* kIconSearch = "\xEE\x9C\xA1";   // U+E721
-inline constexpr const char* kIconProjects = "\xEE\xA3\xB1"; // U+E8F1 Library
-inline constexpr const char* kIconEngines = "\xEE\x9F\xBC";  // U+E7FC Game
-inline constexpr const char* kIconTools = "\xEE\xB1\xBA";    // U+EC7A DeveloperTools
-inline constexpr const char* kIconSettings = "\xEE\x9C\x93"; // U+E713 Setting
-inline constexpr const char* kIconCancel = "\xEE\x9C\x91";   // U+E711 close, dismiss
-inline constexpr const char* kIconEdit = "\xEE\x9C\x8F";     // U+E70F edit, rename
-inline constexpr const char* kIconChevronDown = "\xEE\x9C\x8D"; // U+E70D more choices of a split button
-inline constexpr const char* kIconView = "\xEE\xA2\x90";        // U+E890 show hidden items
-inline constexpr const char* kIconHide = "\xEE\xB4\x9A";        // U+ED1A hide them again
+inline constexpr const char* kIconRemove = "\xEE\xAF\x90";     // subtract remove from a list
+inline constexpr const char* kIconUp = "\xEF\x86\x9B";         // arrow_up upgrade
+inline constexpr const char* kIconCopy = "\xEF\x8C\xAB";       // copy
+inline constexpr const char* kIconLaunch = "\xEF\x96\x82";     // open open in its program
+inline constexpr const char* kIconFolderOpen = "\xEF\x90\xAE"; // folder_open show in Explorer
+inline constexpr const char* kIconDownload = "\xEF\x85\x90";   // arrow_download install
+inline constexpr const char* kIconSync = "\xEF\x86\x90";       // arrow_sync update
+inline constexpr const char* kIconBuild = "\xEE\xBA\x86";      // wrench
+inline constexpr const char* kIconOutput = "\xEF\x8D\xB8";     // document
+inline constexpr const char* kIconAdd = "\xEF\x84\x89";        // add
+inline constexpr const char* kIconFolder = "\xEF\x90\x98";     // folder
+inline constexpr const char* kIconRefresh = "\xEF\x84\xBD";    // arrow_clockwise
+inline constexpr const char* kIconStar = "\xEF\x9C\x8F";       // star
+inline constexpr const char* kIconStarFilled = "\xEE\xAE\xAA"; // star_emphasis
+inline constexpr const char* kIconMore = "\xEE\xA0\xA4";     // more_horizontal
+inline constexpr const char* kIconSearch = "\xEF\x9A\x8F";   // search
+inline constexpr const char* kIconProjects = "\xEE\x9D\xA2"; // library Library
+inline constexpr const char* kIconEngines = "\xEE\x9A\x8A";  // games Game
+inline constexpr const char* kIconTools = "\xEE\xBA\x87";    // wrench_screwdriver DeveloperTools
+inline constexpr const char* kIconSettings = "\xEF\x9A\xA9"; // settings Setting
+inline constexpr const char* kIconCancel = "\xEF\x8D\xA9";   // dismiss close, dismiss
+inline constexpr const char* kIconEdit = "\xEF\x8F\x9D";     // edit edit, rename
+inline constexpr const char* kIconChevronDown = "\xEF\x8A\xA3"; // chevron_down more choices of a split button
+inline constexpr const char* kIconView = "\xEE\x97\xB2";        // eye show hidden items
+inline constexpr const char* kIconHide = "\xEE\x97\xB5";        // eye_off hide them again
 
 class App {
 public:
