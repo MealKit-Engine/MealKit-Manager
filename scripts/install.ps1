@@ -42,6 +42,7 @@ $sep = [string][IO.Path]::DirectorySeparatorChar
 $exeName = if ($onLinux) { "MealKitManager" } else { "MealKitManager.exe" }
 $oldName = if ($onLinux) { "MealKitManager.old" } else { "MealKitManager.old.exe" }
 $packageFiles = @($exeName, "FluentSystemIcons-Regular.ttf", "install.ps1", "LICENSE") # what a Manager package holds besides SETUP
+if ($onLinux) { $packageFiles += "MealKitManager.png" } # the .desktop entry's icon (Windows takes it from the exe)
 function PlatformOf($e) { if ($e.platform) { return [string]$e.platform } return "windows-x64" }
 
 function Fail([string]$message) { Write-Host "[MealKit] $message"; exit 1 }
@@ -56,7 +57,7 @@ function Fetch([string]$location, [string]$destination) {
     else { Invoke-WebRequest -Uri $location -OutFile $destination -UseBasicParsing }
 }
 
-# Linux: the application menu entry (~/.local/share/applications/mealkit-manager.desktop); no desktop icon, no uninstall registry
+# Linux: the application menu entry (~/.local/share/applications/mealkit-manager.desktop, Icon= MealKitManager.png beside the exe); no desktop shortcut, no uninstall registry
 function Applications-Folder {
     if ($env:MEALKIT_SHORTCUT_DIR) { return $env:MEALKIT_SHORTCUT_DIR }
     $data = if ($env:XDG_DATA_HOME) { $env:XDG_DATA_HOME } else { Join-Path $HOME ".local/share" }
@@ -66,7 +67,7 @@ function Make-Shortcut([string]$folder, [string]$exe) {
     if ($onLinux) {
         New-Item -ItemType Directory -Force $folder | Out-Null
         $link = Join-Path $folder "mealkit-manager.desktop"
-        $text = "[Desktop Entry]`nType=Application`nName=MealKit Manager`nComment=Install MealKit engines and tools, open projects`nExec=`"$exe`"`nPath=$(Split-Path $exe -Parent)`nTerminal=false`nCategories=Development;`n"
+        $text = "[Desktop Entry]`nType=Application`nName=MealKit Manager`nComment=Install MealKit engines and tools, open projects`nExec=`"$exe`"`nPath=$(Split-Path $exe -Parent)`nIcon=$(Join-Path (Split-Path $exe -Parent) "MealKitManager.png")`nTerminal=false`nCategories=Development;`n"
         [IO.File]::WriteAllText($link, $text, (New-Object Text.UTF8Encoding $false))
         Write-Output "shortcut`t$link"
         return

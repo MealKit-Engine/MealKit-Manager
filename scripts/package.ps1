@@ -1,7 +1,7 @@
 # Packs MealKit Manager as the one download users get (engine ROADMAP R2, docs/DECISIONS.md "Users download only MealKit Manager"):
 #   scripts\package.ps1 [-Out <folder>]        (after build.bat)
 # Writes <Out>\mealkit-manager-<version>-windows-x64.zip (linux-x64 on Linux, PowerShell 7): MealKitManager.exe (MealKitManager), the icon font, install.ps1, LICENSE and SETUP.
-# On Linux "installs itself" puts the Manager in ~/.local/share/MealKit/manager with an application menu entry (no desktop icon).
+# On Linux "installs itself" puts the Manager in ~/.local/share/MealKit/manager with an application menu entry (icon MealKitManager.png beside the exe; no desktop icon).
 # Unzipped and run, the exe sees SETUP, installs itself into %LOCALAPPDATA%\MealKit\manager with a Start menu and a desktop
 # shortcut (install.ps1 self) and starts the installed copy. Prints the zip's size and SHA-256.
 param([string]$Out = "")
@@ -22,6 +22,7 @@ if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $exe $stage
 Copy-Item (Join-Path $repo "third_party/fluent-icons/FluentSystemIcons-Regular.ttf") $stage # the icon font is loaded from beside the exe
+if ($onLinux) { Copy-Item (Join-Path $repo "res/MealKitManager.png") $stage } # the .desktop entry's icon
 Copy-Item (Join-Path $repo "scripts/install.ps1") $stage
 Copy-Item (Join-Path $repo "LICENSE") $stage
 [IO.File]::WriteAllText((Join-Path $stage "SETUP"), "Run $(Split-Path $exe -Leaf) to install MealKit Manager.`n")
