@@ -15,6 +15,21 @@
 
 namespace mkmanager {
 
+// Executable suffix of this OS (engine editor, tools, Manager itself)
+#ifdef _WIN32
+inline constexpr const char* kExeSuffix = ".exe";
+#else
+inline constexpr const char* kExeSuffix = "";
+#endif
+
+// Package platform of the release index: entries without one are Windows (the index's format 1 before Linux)
+inline constexpr const char* kDefaultPlatform = "windows-x64";
+#ifdef _WIN32
+inline constexpr const char* kPlatform = "windows-x64"; // this OS
+#else
+inline constexpr const char* kPlatform = "linux-x64";
+#endif
+
 struct Project {
     std::string directory;
     std::string name;
@@ -51,8 +66,9 @@ struct Release {
     std::string url;
     std::string sha256;
     unsigned long long size = 0;
+    std::string platform = kDefaultPlatform; // "windows-x64" or "linux-x64"; the index leaves it out for Windows
 };
-// "engine<TAB>version<TAB>size<TAB>url<TAB>sha256" lines; other lines are skipped
+// "engine<TAB>version<TAB>size<TAB>url<TAB>sha256[<TAB>platform]" lines; other lines are skipped. Entries of other platforms are dropped
 std::vector<Release> parseReleaseList(const std::string& output);
 // A tool in the release index: its live protocol and the engine MINORs it works with (engine docs/DECISIONS.md "How the Manager installs")
 struct ToolRelease {
@@ -64,14 +80,15 @@ struct ToolRelease {
     uint32_t protocol = 0;
     std::vector<std::string> engines; // "0.9"
     std::string summary, icon;        // from the tool's manifest (optional)
+    std::string platform = kDefaultPlatform;
 };
-// "tool<TAB>name<TAB>version<TAB>size<TAB>url<TAB>sha256<TAB>protocol<TAB>engines[<TAB>summary<TAB>icon]" lines (engines comma separated)
+// "tool<TAB>name<TAB>version<TAB>size<TAB>url<TAB>sha256<TAB>protocol<TAB>engines[<TAB>summary<TAB>icon[<TAB>platform]]" lines (engines comma separated); other platforms dropped
 std::vector<ToolRelease> parseToolReleases(const std::string& output);
 // Where installed tools go: <user folder>\tools\<tool> (where the editor's [Tools] menu and this Manager look)
 std::string toolsRoot();
 // The folder is inside this PC's temp folder (%TEMP%): throwaway and test projects the project list keeps out of the way
 bool isTempFolder(const std::string& directory);
-// The index's MealKit Manager entry, "manager<TAB>version<TAB>size<TAB>url<TAB>sha256" (version blank if none)
+// The index's MealKit Manager entry, "manager<TAB>version<TAB>size<TAB>url<TAB>sha256[<TAB>platform]" (version blank if none or for another platform)
 Release parseManagerRelease(const std::string& output);
 // Folder from the "installed<TAB><folder>" line of install.ps1 engine (blank if none)
 std::string installedFolder(const std::string& output);
@@ -90,8 +107,12 @@ struct Toolchain {
 };
 Toolchain parseToolchain(const std::string& output);
 // Installs Visual Studio Build Tools with the C++ workload (shown to copy when no compiler is found)
-inline constexpr const char* kBuildToolsWinget =
+#ifdef _WIN32
+inline constexpr const char* kInstallToolsCommand =
     "winget install Microsoft.VisualStudio.2022.BuildTools --override \"--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\"";
+#else
+inline constexpr const char* kInstallToolsCommand = "sudo apt install build-essential cmake ninja-build"; // Debian/Ubuntu; other distros have the same packages
+#endif
 
 // "0.9.4" → "0.9" (blank if not a version)
 std::string minorOf(const std::string& version);

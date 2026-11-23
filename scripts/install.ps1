@@ -34,11 +34,16 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue" # Invoke-WebRequest's progress bar makes 5.1 downloads very slow
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+if (-not $IsLinux) { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 }
+# This OS: the release index tags every engine and tool entry with a "platform" (missing = windows-x64); only this OS's entries are used
+$onLinux = [bool]$IsLinux
+$platform = if ($onLinux) { "linux-x64" } else { "windows-x64" }
+$sep = [string][IO.Path]::DirectorySeparatorChar
+function PlatformOf($e) { if ($e.platform) { return [string]$e.platform } return "windows-x64" }
 
 function Fail([string]$message) { Write-Host "[MealKit] $message"; exit 1 }
 function Local-Path([string]$location) {
-    if ($location -match '^file:///(.+)$') { return [Uri]::UnescapeDataString($Matches[1]).Replace("/", "\") }
+    if ($location -match '^file:///(.+)$') { return [Uri]::UnescapeDataString($Matches[1]).Replace("/", $sep) }
     if ($location -match '^https?://') { return $null }
     return $location
 }
@@ -99,6 +104,9 @@ function Make-Shortcuts([string]$to) {
     Register $to
 }
 
+if ($onLinux -and @("self", "shortcuts", "update", "uninstall") -contains $Command) {
+    Fail "$Command is for the Windows package; the Manager package for Linux is not published yet. Run MealKitManager from its build folder."
+}
 if ($Command -eq "uninstall") {
     if (-not $To) { Fail "uninstall needs -To" }
     if ($WaitPid) { Wait-Process -Id $WaitPid -Timeout 30 -ErrorAction SilentlyContinue }
@@ -119,11 +127,20 @@ if ($Command -eq "removetool") {
     if (-not (Test-Path (Join-Path $target "mealkit-tool.txt"))) { Fail "$target is not an installed tool." }
     $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
         $p = $null; try { $p = $_.Path } catch {}
-        $p -and $p.StartsWith($target + "\", [StringComparison]::OrdinalIgnoreCase) })
+        $p -and $p.StartsWith($target + $sep, [StringComparison]::OrdinalIgnoreCase) })
     if ($running.Count) { Fail ("Close {0} first: it is running." -f $Name) }
     try { Remove-Item -LiteralPath $target -Recurse -Force }
     catch { Fail "Could not remove ${target}: $($_.Exception.Message)" }
     Write-Output "removed`t$target"
+    exit 0
+}
+if ($Command -eq "check" -and $onLinux) {
+    # The editor builds with a C++ compiler, CMake and Ninja; shaders compile for Vulkan with the DXC the engine fetches, nothing to check here
+    $missing = @("cmake", "ninja") | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }
+    $cxx = @("clang++", "g++") | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
+    if (-not $cxx) { $missing = @($missing) + "clang++ or g++" }
+    Write-Output ("compiler`t{0}`t{1}" -f $(if ($missing) { "missing" } else { "ok" }), $(if ($missing) { "missing: " + ($missing -join ", ") } else { $cxx }))
+    Write-Output "dxc`tok`tnot needed on Linux"
     exit 0
 }
 if ($Command -eq "check") {
@@ -174,13 +191,13 @@ try {
     $mgr = $data.manager
     if ($Command -eq "tool") {
         if (-not $Name -or -not $Root) { Fail "tool needs -Name and -Root" }
-        $entry = @($data.tools) | Where-Object { $_ -and $_.name -eq $Name } | Select-Object -First 1
-        if (-not $entry) { Fail "Tool $Name is not in the release index." }
+        $entry = @($data.tools) | Where-Object { $_ -and $_.name -eq $Name -and (PlatformOf $_) -eq $platform } | Select-Object -First 1
+        if (-not $entry) { Fail "Tool $Name is not in the release index for $platform." }
         $target = Join-Path $Root $Name
         # Applied only once the tool and the editor are closed (engine docs/DECISIONS.md "How the Manager installs"): files in use can't be replaced
         $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
             $p = $null; try { $p = $_.Path } catch {}
-            $p -and ($p.StartsWith($target + "\", [StringComparison]::OrdinalIgnoreCase) -or $_.ProcessName -eq "MealKitEditor") })
+            $p -and ($p.StartsWith($target + $sep, [StringComparison]::OrdinalIgnoreCase) -or $_.ProcessName -eq "MealKitEditor") })
         if ($running.Count) { Fail ("Close {0} first: {1} is running." -f $(if ($running[0].ProcessName -eq "MealKitEditor") { "the editor" } else { $Name }), $running[0].ProcessName) }
         $zip = Join-Path $temp "tool.zip"
         Write-Host "[MealKit] Downloading $Name $($entry.version)"
@@ -234,17 +251,17 @@ try {
     }
 
     if ($Command -eq "list") {
-        if ($mgr) { Write-Output ("manager`t{0}`t{1}`t{2}`t{3}" -f $mgr.version, $mgr.size, $mgr.url, $mgr.sha256) }
+        if ($mgr -and (PlatformOf $mgr) -eq $platform) { Write-Output ("manager`t{0}`t{1}`t{2}`t{3}`t{4}" -f $mgr.version, $mgr.size, $mgr.url, $mgr.sha256, (PlatformOf $mgr)) }
         foreach ($t in @($data.tools)) {
-            if ($t) { Write-Output ("tool`t{0}`t{1}`t{2}`t{3}`t{4}`t{5}`t{6}`t{7}`t{8}" -f $t.name, $t.version, $t.size, $t.url, $t.sha256, $t.protocol, (@($t.engines) -join ","), ("" + $t.summary), ("" + $t.icon)) }
+            if ($t -and (PlatformOf $t) -eq $platform) { Write-Output ("tool`t{0}`t{1}`t{2}`t{3}`t{4}`t{5}`t{6}`t{7}`t{8}`t{9}" -f $t.name, $t.version, $t.size, $t.url, $t.sha256, $t.protocol, (@($t.engines) -join ","), ("" + $t.summary), ("" + $t.icon), (PlatformOf $t)) }
         }
-        foreach ($e in $engines) { Write-Output ("engine`t{0}`t{1}`t{2}`t{3}" -f $e.version, $e.size, $e.url, $e.sha256) }
+        foreach ($e in $engines) { if ((PlatformOf $e) -eq $platform) { Write-Output ("engine`t{0}`t{1}`t{2}`t{3}`t{4}" -f $e.version, $e.size, $e.url, $e.sha256, (PlatformOf $e)) } }
         exit 0
     }
 
     if (-not $Version -or -not $Root) { Fail "engine needs -Version and -Root" }
-    $entry = $engines | Where-Object { $_.version -eq $Version } | Select-Object -First 1
-    if (-not $entry) { Fail "Engine $Version is not in the release index." }
+    $entry = $engines | Where-Object { $_.version -eq $Version -and (PlatformOf $_) -eq $platform } | Select-Object -First 1
+    if (-not $entry) { Fail "Engine $Version is not in the release index for $platform." }
     $target = Join-Path $Root $Version
     if (Test-Path (Join-Path $target "VERSION")) { Fail "Engine $Version is already installed in $target" }
 

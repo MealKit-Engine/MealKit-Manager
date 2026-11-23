@@ -58,6 +58,8 @@ std::vector<Release> parseReleaseList(const std::string& output) {
         r.size = std::strtoull(f[2].c_str(), nullptr, 10);
         r.url = f[3];
         r.sha256 = f[4];
+        if (f.size() > 5 && !f[5].empty()) r.platform = f[5];
+        if (r.platform != kPlatform) continue;
         out.push_back(std::move(r));
     }
     return out;
@@ -85,6 +87,8 @@ std::vector<ToolRelease> parseToolReleases(const std::string& output) {
         }
         if (f.size() > 8) t.summary = f[8];
         if (f.size() > 9) t.icon = f[9];
+        if (f.size() > 10 && !f[10].empty()) t.platform = f[10];
+        if (t.platform != kPlatform) continue;
         out.push_back(std::move(t));
     }
     return out;
@@ -108,7 +112,9 @@ Release parseManagerRelease(const std::string& output) {
     for (const std::string& line : lines(output)) {
         const std::vector<std::string> f = splitTabs(line);
         if (f.size() < 5 || f[0] != "manager" || f[1].empty() || f[3].empty()) continue;
-        return Release{f[1], f[3], f[4], std::strtoull(f[2].c_str(), nullptr, 10)};
+        const std::string platform = f.size() > 5 && !f[5].empty() ? f[5] : std::string(kDefaultPlatform);
+        if (platform != kPlatform) continue;
+        return Release{f[1], f[3], f[4], std::strtoull(f[2].c_str(), nullptr, 10), platform};
     }
     return {};
 }
@@ -244,7 +250,7 @@ bool readEngine(const std::string& directory, Engine& out) {
     out.directory = normalizeDirectory(directory);
     const std::vector<std::string> version = readList(joinPath(out.directory, "VERSION"));
     if (!version.empty()) out.version = version[0];
-    const std::string editor = joinPath(out.directory, "build/Editor/bin/MealKitEditor.exe");
+    const std::string editor = joinPath(out.directory, std::string("build/Editor/bin/MealKitEditor") + kExeSuffix);
     if (pathExists(editor)) out.editorExe = normalizeDirectory(editor);
     out.valid = !out.version.empty() && pathExists(joinPath(out.directory, "tools/new_project.ps1"));
     return out.valid;

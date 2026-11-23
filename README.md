@@ -30,6 +30,8 @@ build.bat            :: build\bin\MealKitManager.exe + tests
 build.bat install    :: also install to %LOCALAPPDATA%\MealKit\manager
 ```
 
+Linux (Ubuntu): a C++20 compiler, CMake 3.25+, Ninja and PowerShell 7 (`pwsh`); from the MealKit workspace, `.claude/scripts/mk-build.ps1 -Repo MealKit-Manager` builds into `build/linux`. It reads the release index's `linux-x64` entries (`platform` field; an entry without one is `windows-x64`). Its own Linux package, shortcuts and self-update are not made yet.
+
 Other platforms: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build && ctest --test-dir build`.
 
 ## Command line

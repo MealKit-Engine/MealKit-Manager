@@ -140,10 +140,16 @@ void applyEditorCaption(SDL_Window* window) {
 ImFont* loadFontWeight(float size, const char* latinPath, const char* koreanPath, bool& iconFont) {
     ImGuiIO& io = ImGui::GetIO();
     if (!SDL_GetPathInfo(latinPath, nullptr)) return nullptr;
-    ImFont* font = io.Fonts->AddFontFromFileTTF(latinPath, size);
+    // The icon font lives in the Private Use Area; system fonts (DejaVu, Nanum) have their own glyphs there that
+    // would win the merge, so the text fonts leave that range to it
+    static const ImWchar kNoPrivateUse[] = {0xE000, 0xF8FF, 0};
+    ImFontConfig text;
+    text.GlyphExcludeRanges = kNoPrivateUse;
+    ImFont* font = io.Fonts->AddFontFromFileTTF(latinPath, size, &text);
     if (!font) return nullptr;
     ImFontConfig merge;
     merge.MergeMode = true;
+    merge.GlyphExcludeRanges = kNoPrivateUse;
     if (SDL_GetPathInfo(koreanPath, nullptr)) io.Fonts->AddFontFromFileTTF(koreanPath, size, &merge);
     iconFont = false;
     // Icon font (engine docs/TOOL_DESIGN.md section 2): Fluent UI System Icons beside the executable on every OS
@@ -299,7 +305,7 @@ int setupFromPackage(bool launch) {
     }
     if (!launch) return 0;
     std::string error;
-    if (!mkmanager::launchDetached({mkcontract::joinPath(to, "MealKitManager.exe")}, error)) {
+    if (!mkmanager::launchDetached({mkcontract::joinPath(to, std::string("MealKitManager") + mkmanager::kExeSuffix)}, error)) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "MealKit Manager", ("Cannot start the installed MealKit Manager: " + error).c_str(), nullptr);
         return 1;
     }

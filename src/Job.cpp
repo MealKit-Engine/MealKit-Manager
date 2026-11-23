@@ -99,7 +99,11 @@ bool processAlive(unsigned pid) {
 }
 
 std::vector<std::string> powershellArgs(const std::string& script, const std::vector<std::string>& args) {
+    #ifdef _WIN32
     std::vector<std::string> out = {"powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script};
+#else
+    std::vector<std::string> out = {"pwsh", "-NoProfile", "-File", script};
+#endif
     out.insert(out.end(), args.begin(), args.end());
     return out;
 }

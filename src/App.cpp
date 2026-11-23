@@ -123,10 +123,15 @@ bool fileExists(const std::string& path) {
     return std::filesystem::is_regular_file(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
 }
 
+#ifdef _WIN32
+constexpr const char* kPathSeparator = "\\";
+#else
+constexpr const char* kPathSeparator = "/";
+#endif
 std::string pathJoin(const std::string& a, const std::string& b) {
     if (a.empty()) return b;
     const char last = a.back();
-    return (last == '\\' || last == '/') ? a + b : a + "\\" + b;
+    return (last == '\\' || last == '/') ? a + b : a + kPathSeparator + b;
 }
 
 // scripts\install.ps1, copied beside the exe by the build and cmake --install
@@ -216,13 +221,17 @@ void App::toolchainBanner() {
     if (!m_toolchain.checked || m_toolchain.compiler) return;
     const ImVec4 warn = theme::warning();
     ImGui::TextColored(warn, "%s", tr("No C++ compiler on this PC: game code can't be built, so projects can't open in the editor."));
+#ifdef _WIN32
     ImGui::TextUnformatted(tr("Install Visual Studio Build Tools with C++ (about 6 GB), from a terminal:"));
+#else
+    ImGui::TextUnformatted(tr("Install a C++ compiler, CMake and Ninja, from a terminal:"));
+#endif
     static char line[256];
-    std::snprintf(line, sizeof(line), "%s", kBuildToolsWinget);
+    std::snprintf(line, sizeof(line), "%s", kInstallToolsCommand);
     ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Check Again ").x * 2.6f);
     ImGui::InputText("##winget", line, sizeof(line), ImGuiInputTextFlags_ReadOnly);
     ImGui::SameLine();
-    if (iconButton(kIconCopy, tr("Copy"))) SDL_SetClipboardText(kBuildToolsWinget);
+    if (iconButton(kIconCopy, tr("Copy"))) SDL_SetClipboardText(kInstallToolsCommand);
     ImGui::SameLine();
     ImGui::BeginDisabled(m_job.running());
     if (iconButton(kIconRefresh, tr("Check Again"))) m_toolchainRequested = false;
@@ -252,7 +261,7 @@ void App::finishJob() {
     if (m_jobUpdatesManager) { // new files are in place: start the new Manager and quit this one
         m_jobUpdatesManager = false;
         std::string error;
-        if (ok && launchDetached({mkcontract::joinPath(mkcontract::joinPath(userDirectory(), "manager"), "MealKitManager.exe")}, error))
+        if (ok && launchDetached({mkcontract::joinPath(mkcontract::joinPath(userDirectory(), "manager"), std::string("MealKitManager") + kExeSuffix)}, error))
             quitRequested = true;
         else if (ok)
             setStatus(trf("Updated, but the new Manager didn't start: %s", error.c_str()), true);
@@ -517,8 +526,8 @@ SDL_Texture* App::projectIcon(const Project& p) {
     SDL_Texture* texture = nullptr;
     if (renderer && p.valid) {
         std::string icon = p.icon.empty() ? std::string("icon.png") : p.icon;
-        std::replace(icon.begin(), icon.end(), '/', '\\');
-        if (SDL_Surface* surface = SDL_LoadPNG((p.directory + "\\" + icon).c_str())) {
+        std::replace(icon.begin(), icon.end(), '\\', '/');
+        if (SDL_Surface* surface = SDL_LoadPNG(pathJoin(p.directory, icon).c_str())) {
             texture = SDL_CreateTextureFromSurface(renderer, surface);
             if (texture) SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
             SDL_DestroySurface(surface);
@@ -590,7 +599,7 @@ void App::removeMissingProjects() {
 // The engine's own sample projects (no engine line: they live in the engine repo) can't be renamed (rename_project.ps1 refuses too)
 bool App::canRename(const Project& p) const {
     const Engine* engine = p.valid ? m_catalog.engineFor(p) : nullptr;
-    return engine && !p.engine.empty() && fileExists(pathJoin(engine->directory, "tools\\rename_project.ps1"));
+    return engine && !p.engine.empty() && fileExists(pathJoin(engine->directory, "tools/rename_project.ps1"));
 }
 
 // An editor running on the project (its live info file and a live process)
@@ -602,7 +611,7 @@ bool App::editorOpen(const std::string& project) const {
 
 bool App::canMove(const Project& p) const {
     const Engine* engine = p.valid ? m_catalog.engineFor(p) : nullptr;
-    return engine && !p.engine.empty() && fileExists(pathJoin(engine->directory, "tools\\move_project.ps1"));
+    return engine && !p.engine.empty() && fileExists(pathJoin(engine->directory, "tools/move_project.ps1"));
 }
 
 void App::movePopup() {
@@ -626,7 +635,7 @@ void App::movePopup() {
         else if (engine) {
             m_jobMoveFrom = project->directory;
             m_jobMoveTo = m_confirmMoveTo;
-            runScript(trf("Move %s", project->name.c_str()), pathJoin(engine->directory, "tools\\move_project.ps1"),
+            runScript(trf("Move %s", project->name.c_str()), pathJoin(engine->directory, "tools/move_project.ps1"),
                       {"-Project", project->directory, "-To", m_confirmMoveTo});
             if (!m_job.running()) m_jobMoveFrom.clear();
         }
@@ -666,7 +675,7 @@ void App::renamePopup() {
         const Engine* engine = m_catalog.engineFor(*project);
         if (editorOpen(project->directory)) setStatus(trf("Close the editor of %s first, then rename it.", project->name.c_str()), true);
         else if (engine)
-            runScript(trf("Rename %s", project->name.c_str()), pathJoin(engine->directory, "tools\\rename_project.ps1"),
+            runScript(trf("Rename %s", project->name.c_str()), pathJoin(engine->directory, "tools/rename_project.ps1"),
                       {"-Project", project->directory, "-Name", m_confirmRenameTo});
         close = true;
     }
@@ -1207,7 +1216,11 @@ void App::enginesTab() {
                 ImGui::BeginDisabled(m_job.running());
                 if (actionButton(kIconBuild, tr("Build Editor"), false, tr("Projects open in the editor once it is built.")))
                     // No console, so it runs in the system code page (matches ninja's /showIncludes prefix)
+                    #ifdef _WIN32
                     m_job.start(tr("Editor build"), {"cmd.exe", "/d", "/c", pathJoin(e.directory, "build.bat"), "Editor"});
+#else
+                    m_job.start(tr("Editor build"), powershellArgs(pathJoin(e.directory, "build" ".ps1"), {"Editor"}));
+#endif
                 ImGui::EndDisabled();
             }
             ImGui::PopID();
@@ -1782,7 +1795,7 @@ void App::newProjectPopup() {
         }
     }
     // Project templates: engines that have templates\empty take new_project.ps1 -Template (older ones only make arena projects)
-    const bool templates = !engines.empty() && fileExists(pathJoin(engines[m_newEngine].directory, "templates\\empty\\source\\app\\GameSession.cpp"));
+    const bool templates = !engines.empty() && fileExists(pathJoin(engines[m_newEngine].directory, "templates/empty/source/app/GameSession.cpp"));
     if (!templates) m_newTemplate = 0;
     else {
         const char* const labels[] = {tr("Arena versus (sample game)"), tr("Empty")};

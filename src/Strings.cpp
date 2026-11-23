@@ -137,6 +137,7 @@ constexpr Pair kKorean[] = {
     {"Cannot update the engine line of %s", "%s의 engine 줄을 바꿀 수 없습니다"},
     {" (engine line now %s)", " (engine 줄을 %s(으)로 바꿈)"},
     {"No C++ compiler on this PC: game code can't be built, so projects can't open in the editor.", "이 PC에 C++ 컴파일러가 없습니다. 게임 코드를 빌드할 수 없어서 프로젝트를 에디터에서 열 수 없습니다."},
+    {"Install a C++ compiler, CMake and Ninja, from a terminal:", "터미널에서 C++ 컴파일러, CMake, Ninja를 설치하세요:"},
     {"Install Visual Studio Build Tools with C++ (about 6 GB), from a terminal:", "터미널에서 C++가 포함된 Visual Studio Build Tools를 설치하세요 (약 6GB):"},
     {"Copy", "복사"},
     {"Check Again", "다시 확인"},

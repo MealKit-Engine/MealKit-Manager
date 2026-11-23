@@ -46,7 +46,7 @@ void testCatalog(const fs::path& root) {
     // Engine: VERSION + new_project.ps1 + a built editor. Its sample inside the repo is a project too (no engine line)
     write(engine / "VERSION", "0.5.2\n");
     write(engine / "tools" / "new_project.ps1", "#\n");
-    write(engine / "build" / "Editor" / "bin" / "MealKitEditor.exe", "");
+    write(engine / "build" / "Editor" / "bin" / (std::string("MealKitEditor") + mkmanager::kExeSuffix), "");
     write(engine / "samples" / "sandbox" / "mealkit.project", "# comment\n@format project 1\nname sandbox\n");
     write(game / "mealkit.project", "\xEF\xBB\xBF# MealKit project\n@format project 1\nname Game\nengine " + str(engine) +
                                         "\nengineVersion 0.5.2\ncreated 2026-10-01\n");
@@ -190,8 +190,10 @@ void testEngineMatching(const fs::path& root) {
     const Release* r = Catalog::releaseFor(catalog.projects()[2], releases);
     CHECK(r && r->version == "0.8.4");
 
+    const std::string here = std::string("\t\t\t") + kPlatform; // empty summary and icon, then the platform column
     const std::vector<ToolRelease> tools = parseToolReleases(
-        "tool\tMkUI\t0.4.0\t900\thttps://x/t.zip\tab\t1\t0.9,0.10\r\ntool\tOld\t0.1.0\t1\tu\ts\t1\t0.7\ntool\tFuture\t2.0.0\t1\tu\ts\t9\t0.9\n");
+        "tool\tMkUI\t0.4.0\t900\thttps://x/t.zip\tab\t1\t0.9,0.10" + here + "\r\ntool\tOld\t0.1.0\t1\tu\ts\t1\t0.7" + here +
+        "\ntool\tFuture\t2.0.0\t1\tu\ts\t9\t0.9" + here + "\n");
     CHECK(tools.size() == 3);
     if (tools.size() == 3) {
         CHECK(tools[0].name == "MkUI" && tools[0].version == "0.4.0" && tools[0].size == 900ull && tools[0].protocol == 1u);
@@ -200,7 +202,7 @@ void testEngineMatching(const fs::path& root) {
         CHECK(!catalog.toolMatches(tools[1])); // only for 0.7
         CHECK(!catalog.toolMatches(tools[2])); // another live protocol
     }
-    const std::vector<ToolRelease> described = parseToolReleases("tool\tMkAudio\t0.3.1\t9\tu\ts\t1\t0.9\tGame sound events\taudio\n");
+    const std::vector<ToolRelease> described = parseToolReleases(std::string("tool\tMkAudio\t0.3.1\t9\tu\ts\t1\t0.9\tGame sound events\taudio\t") + kPlatform + "\n");
     CHECK(described.size() == 1 && described[0].summary == "Game sound events" && described[0].icon == "audio");
 
     CHECK(minorOf("0.9.12") == "0.9" && minorOf("x").empty() && versionLess("0.9.9", "0.9.10") && !versionLess("0.9.10", "0.9.9"));
@@ -239,19 +241,31 @@ void testTempFolder(const fs::path& root) {
 
 // install.ps1 list / engine output (engine ROADMAP R2)
 void testReleases() {
+    const std::string P = std::string("\t") + kPlatform;
     const std::vector<Release> list = parseReleaseList(
-        "[MealKit] noise\r\nengine\t0.9.4\t39366595\thttps://x/mealkit-engine-0.9.4-windows-x64.zip\tabc\r\n"
-        "engine\t0.8.2\t100\tfile:///C:/e.zip\tdef\nengine\t\t1\turl\tsha\ntool\tMkAudio\t1\tu\ts\n");
+        "[MealKit] noise\r\nengine\t0.9.4\t39366595\thttps://x/mealkit-engine-0.9.4-windows-x64.zip\tabc" + P + "\r\n"
+        "engine\t0.8.2\t100\tfile:///C:/e.zip\tdef" + P + "\nengine\t\t1\turl\tsha\ntool\tMkAudio\t1\tu\ts\n");
     CHECK(list.size() == 2);
     CHECK(list[0].version == "0.9.4" && list[0].size == 39366595ull && list[0].sha256 == "abc");
     CHECK(list[0].url == "https://x/mealkit-engine-0.9.4-windows-x64.zip");
     CHECK(list[1].version == "0.8.2" && list[1].url == "file:///C:/e.zip");
     CHECK(installedFolder("[MealKit] Downloading\r\ninstalled\tC:\\Users\\a\\engines\\0.9.4\r\n") == "C:\\Users\\a\\engines\\0.9.4");
     CHECK(installedFolder("[MealKit] failed\n").empty());
-    const Release mgr = parseManagerRelease("manager\t0.2.0\t1484438\thttps://x/m.zip\tff\r\nengine\t0.9.4\t1\tu\ts\n");
+    const Release mgr = parseManagerRelease("manager\t0.2.0\t1484438\thttps://x/m.zip\tff" + P + "\r\nengine\t0.9.4\t1\tu\ts\n");
     CHECK(mgr.version == "0.2.0" && mgr.size == 1484438ull && mgr.url == "https://x/m.zip" && mgr.sha256 == "ff");
     CHECK(parseManagerRelease("engine\t0.9.4\t1\tu\ts\n").version.empty());
     CHECK(parseReleaseList("manager\t0.2.0\t1\tu\ts\n").empty());
+
+    // The platform column: a line without one is windows-x64, and only this OS's entries are kept
+    const std::string other = std::string(kPlatform) == "linux-x64" ? "windows-x64" : "linux-x64";
+    const std::vector<Release> mixed = parseReleaseList("engine\t0.9.4\t1\tu1\ts\twindows-x64\nengine\t0.9.4\t2\tu2\ts\tlinux-x64\nengine\t0.8.2\t3\tu3\ts\n");
+    const bool onLinux = std::string(kPlatform) == "linux-x64";
+    CHECK(mixed.size() == (onLinux ? 1u : 2u));
+    CHECK(!mixed.empty() && mixed[0].platform == kPlatform && mixed[0].url == (onLinux ? "u2" : "u1"));
+    CHECK(onLinux || (mixed.size() == 2 && mixed[1].version == "0.8.2")); // no column = windows-x64
+    CHECK(parseReleaseList("engine\t0.9.4\t1\tu\ts\t" + other + "\n").empty());
+    CHECK(parseToolReleases("tool\tMkUI\t0.4.0\t9\tu\ts\t1\t0.9\t\t\t" + other + "\n").empty());
+    CHECK(parseManagerRelease("manager\t0.2.0\t1\tu\ts\t" + other + "\n").version.empty());
 
     const Toolchain have = parseToolchain("compiler\tok\tC:\\VS\r\ndxc\tok\tC:\\dxc.exe\r\n");
     CHECK(have.checked && have.compiler && have.visualStudio == "C:\\VS" && have.dxc && have.dxcPath == "C:\\dxc.exe");
