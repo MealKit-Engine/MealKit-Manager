@@ -52,7 +52,6 @@ bool Job::start(const std::string& label, std::vector<std::string> args) {
         } else {
             size_t size = 0;
             int code = 0;
-            // Keeps reading output until it ends
             if (char* text = static_cast<char*>(SDL_ReadProcess(process, &size, &code))) {
                 m_output.assign(text, size);
                 SDL_free(text);

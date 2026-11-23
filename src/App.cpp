@@ -334,7 +334,7 @@ void App::takePickedIcon() {
         picked = m_pickedIcon;
         project.swap(m_iconFor);
     }
-    if (picked.empty()) return; // canceled
+    if (picked.empty()) return;
     std::string error;
     if (!setProjectIcon(project, picked, error)) {
         setStatus(trf("Cannot change the icon: %s", error.c_str()), true);
@@ -489,7 +489,6 @@ void App::header() {
     }
     ImGui::PopStyleVar(3);
 
-    // Settings
     const float button = ImGui::GetFrameHeight();
     ImGui::SetCursorPos(ImVec2(ImGui::GetContentRegionMax().x - button, top + (height - button) * 0.5f));
     if (iconButton(kIconSettings, tr("Settings"), false, "Ctrl+,")) m_openSettings = true;
@@ -2126,7 +2125,7 @@ void App::takePickedFolder() {
         purpose = m_pickPurpose;
         m_pickPurpose = -1;
     }
-    if (picked.empty()) return; // canceled
+    if (picked.empty()) return;
     if (purpose == 0) {
         Project p;
         if (!readProject(picked, p)) {

@@ -21,20 +21,20 @@ struct SuiteTool; // App.cpp: the MealKit tool family the Tools page always list
 // Segoe Fluent Icons / MDL2 Assets glyphs, one per action across the suite (engine docs/TOOL_DESIGN.md "Glyphs")
 inline constexpr const char* kIconRemove = "\xEE\xAF\x90";     // subtract remove from a list
 inline constexpr const char* kIconUp = "\xEF\x86\x9B";         // arrow_up upgrade
-inline constexpr const char* kIconCopy = "\xEF\x8C\xAB";       // copy
+inline constexpr const char* kIconCopy = "\xEF\x8C\xAB";
 inline constexpr const char* kIconLaunch = "\xEF\x96\x82";     // open open in its program
 inline constexpr const char* kIconFolderOpen = "\xEF\x90\xAE"; // folder_open show in Explorer
 inline constexpr const char* kIconDownload = "\xEF\x85\x90";   // arrow_download install
 inline constexpr const char* kIconSync = "\xEF\x86\x90";       // arrow_sync update
 inline constexpr const char* kIconBuild = "\xEE\xBA\x86";      // wrench
 inline constexpr const char* kIconOutput = "\xEF\x8D\xB8";     // document
-inline constexpr const char* kIconAdd = "\xEF\x84\x89";        // add
-inline constexpr const char* kIconFolder = "\xEF\x90\x98";     // folder
+inline constexpr const char* kIconAdd = "\xEF\x84\x89";
+inline constexpr const char* kIconFolder = "\xEF\x90\x98";
 inline constexpr const char* kIconRefresh = "\xEF\x84\xBD";    // arrow_clockwise
-inline constexpr const char* kIconStar = "\xEF\x9C\x8F";       // star
+inline constexpr const char* kIconStar = "\xEF\x9C\x8F";
 inline constexpr const char* kIconStarFilled = "\xEE\xAE\xAA"; // star_emphasis
 inline constexpr const char* kIconMore = "\xEE\xA0\xA4";     // more_horizontal
-inline constexpr const char* kIconSearch = "\xEF\x9A\x8F";   // search
+inline constexpr const char* kIconSearch = "\xEF\x9A\x8F";
 inline constexpr const char* kIconProjects = "\xEE\x9D\xA2"; // library Library
 inline constexpr const char* kIconEngines = "\xEE\x9A\x8A";  // games Game
 inline constexpr const char* kIconTools = "\xEE\xBA\x87";    // wrench_screwdriver DeveloperTools
@@ -210,7 +210,6 @@ private:
     // suffix is shown after the glyph (a count or a version)
     bool iconButton(const char* glyph, const std::string& name, bool small = false, const char* detail = nullptr, const std::string& suffix = {});
 
-    // New project
     bool m_openNew = false;
     char m_newName[64] = "MyGame";
     int m_newTemplate = 0; // 0 arena, 1 empty (new_project.ps1 -Template, engines from 0.7.21)

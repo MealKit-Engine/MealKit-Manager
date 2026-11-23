@@ -25,7 +25,7 @@ inline constexpr const char* kExeSuffix = "";
 // Package platform of the release index: entries without one are Windows (the index's format 1 before Linux)
 inline constexpr const char* kDefaultPlatform = "windows-x64";
 #ifdef _WIN32
-inline constexpr const char* kPlatform = "windows-x64"; // this OS
+inline constexpr const char* kPlatform = "windows-x64";
 #else
 inline constexpr const char* kPlatform = "linux-x64";
 #endif
@@ -156,7 +156,7 @@ public:
     // The installed tool of that name (nullptr if none)
     const Tool* installedTool(const std::string& name) const;
 
-    void addRecent(const std::string& directory);    // to the top of the list
+    void addRecent(const std::string& directory);
     void removeRecent(const std::string& directory); // removed only from the list (the folder stays)
     void setFavorite(const std::string& directory, bool favorite);
     // A project now lives in another folder (moved, or found again): the list points there, at the top, and keeps its favorite mark
