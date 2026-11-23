@@ -312,12 +312,12 @@ int setupFromPackage(bool launch) {
     return 0;
 }
 
-// An update renames the running exe to MealKitManager.old.exe (install.ps1 update); the next start deletes it
+// An update renames the running exe to MealKitManager.old.exe (MealKitManager.old on Linux; install.ps1 update); the next start deletes it
 void removeOldExe() {
     const char* base = SDL_GetBasePath();
     if (!base) return;
     std::error_code ec;
-    std::filesystem::remove(mkcontract::pathOf(mkcontract::joinPath(base, "MealKitManager.old.exe")), ec);
+    std::filesystem::remove(mkcontract::pathOf(mkcontract::joinPath(base, std::string("MealKitManager.old") + (*mkmanager::kExeSuffix ? ".exe" : ""))), ec);
 }
 
 // --uninstall (Windows "Installed apps" runs it): asks, then a detached install.ps1 uninstall waits for this process to quit and removes

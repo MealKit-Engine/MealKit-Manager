@@ -1,5 +1,5 @@
 # MealKit Manager's installer for engines from the suite release index (engine ROADMAP R2, docs/DECISIONS.md "How the Manager installs").
-# Lives beside MealKitManager.exe (cmake --install). Runs without the engine: there may be none installed yet.
+# Lives beside MealKitManager.exe (MealKitManager on Linux) (cmake --install). Runs without the engine: there may be none installed yet.
 #   install.ps1 list   -Index <url|path>                                   → one line per engine: engine<TAB>version<TAB>size<TAB>url<TAB>sha256
 #   install.ps1 engine -Index <url|path> -Version <x.y.z> -Root <engines>  → downloads, checks the SHA-256, extracts to <Root>\<version>,
 #                                                                            last line: installed<TAB><folder>
@@ -39,11 +39,14 @@ if (-not $IsLinux) { [Net.ServicePointManager]::SecurityProtocol = [Net.Security
 $onLinux = [bool]$IsLinux
 $platform = if ($onLinux) { "linux-x64" } else { "windows-x64" }
 $sep = [string][IO.Path]::DirectorySeparatorChar
+$exeName = if ($onLinux) { "MealKitManager" } else { "MealKitManager.exe" }
+$oldName = if ($onLinux) { "MealKitManager.old" } else { "MealKitManager.old.exe" }
+$packageFiles = @($exeName, "FluentSystemIcons-Regular.ttf", "install.ps1", "LICENSE") # what a Manager package holds besides SETUP
 function PlatformOf($e) { if ($e.platform) { return [string]$e.platform } return "windows-x64" }
 
 function Fail([string]$message) { Write-Host "[MealKit] $message"; exit 1 }
 function Local-Path([string]$location) {
-    if ($location -match '^file:///(.+)$') { return [Uri]::UnescapeDataString($Matches[1]).Replace("/", $sep) }
+    if ($location -match '^file:///(.+)$') { $path = [Uri]::UnescapeDataString($Matches[1]); return $(if ($onLinux) { "/" + $path } else { $path.Replace("/", "\") }) } # file:///C:/x.zip or file:///tmp/x.zip
     if ($location -match '^https?://') { return $null }
     return $location
 }
@@ -53,7 +56,21 @@ function Fetch([string]$location, [string]$destination) {
     else { Invoke-WebRequest -Uri $location -OutFile $destination -UseBasicParsing }
 }
 
+# Linux: the application menu entry (~/.local/share/applications/mealkit-manager.desktop); no desktop icon, no uninstall registry
+function Applications-Folder {
+    if ($env:MEALKIT_SHORTCUT_DIR) { return $env:MEALKIT_SHORTCUT_DIR }
+    $data = if ($env:XDG_DATA_HOME) { $env:XDG_DATA_HOME } else { Join-Path $HOME ".local/share" }
+    return Join-Path $data "applications"
+}
 function Make-Shortcut([string]$folder, [string]$exe) {
+    if ($onLinux) {
+        New-Item -ItemType Directory -Force $folder | Out-Null
+        $link = Join-Path $folder "mealkit-manager.desktop"
+        $text = "[Desktop Entry]`nType=Application`nName=MealKit Manager`nComment=Install MealKit engines and tools, open projects`nExec=`"$exe`"`nPath=$(Split-Path $exe -Parent)`nTerminal=false`nCategories=Development;`n"
+        [IO.File]::WriteAllText($link, $text, (New-Object Text.UTF8Encoding $false))
+        Write-Output "shortcut`t$link"
+        return
+    }
     New-Item -ItemType Directory -Force $folder | Out-Null
     $link = Join-Path $folder "MealKit Manager.lnk"
     $shell = New-Object -ComObject WScript.Shell
@@ -66,6 +83,7 @@ function Make-Shortcut([string]$folder, [string]$exe) {
     Write-Output "shortcut`t$link"
 }
 function Shortcut-Folders {
+    if ($onLinux) { return @((Applications-Folder)) }
     if ($env:MEALKIT_SHORTCUT_DIR) { return @($env:MEALKIT_SHORTCUT_DIR) }
     return @([Environment]::GetFolderPath("Programs"), [Environment]::GetFolderPath("DesktopDirectory")) # Start menu (current user), desktop
 }
@@ -78,7 +96,8 @@ function Uninstall-Key {
 }
 # Windows "Installed apps" entry for the current user; uninstalling there runs MealKitManager.exe --uninstall
 function Register([string]$to) {
-    $exe = Join-Path $to "MealKitManager.exe"
+    if ($onLinux) { return }
+    $exe = Join-Path $to $exeName
     $ver = ((& $exe --version | Out-String).Trim() -replace '^MealKit Manager\s+', '')
     $key = Uninstall-Key
     New-Item -Path $key -Force | Out-Null
@@ -89,9 +108,10 @@ function Register([string]$to) {
     Write-Output "registered`t$key"
 }
 function Make-Shortcuts([string]$to) {
-    $exe = Join-Path $to "MealKitManager.exe"
+    $exe = Join-Path $to $exeName
     if (-not (Test-Path $exe)) { Fail "$exe not found" }
     if ($env:MEALKIT_SHORTCUT_DIR) { Make-Shortcut $env:MEALKIT_SHORTCUT_DIR $exe }
+    elseif ($onLinux) { Make-Shortcut (Applications-Folder) $exe }
     else {
         Make-Shortcut ([Environment]::GetFolderPath("Programs")) $exe
         $marker = Desktop-Marker $to
@@ -104,18 +124,15 @@ function Make-Shortcuts([string]$to) {
     Register $to
 }
 
-if ($onLinux -and @("self", "shortcuts", "update", "uninstall") -contains $Command) {
-    Fail "$Command is for the Windows package; the Manager package for Linux is not published yet. Run MealKitManager from its build folder."
-}
 if ($Command -eq "uninstall") {
     if (-not $To) { Fail "uninstall needs -To" }
     if ($WaitPid) { Wait-Process -Id $WaitPid -Timeout 30 -ErrorAction SilentlyContinue }
     foreach ($folder in Shortcut-Folders) {
-        $link = Join-Path $folder "MealKit Manager.lnk"
+        $link = Join-Path $folder $(if ($onLinux) { "mealkit-manager.desktop" } else { "MealKit Manager.lnk" })
         if (Test-Path $link) { Remove-Item -Force $link; Write-Output "removed`t$link" }
     }
-    $key = Uninstall-Key
-    if (Test-Path $key) { Remove-Item -Recurse -Force $key; Write-Output "removed`t$key" }
+    $key = if ($onLinux) { "" } else { Uninstall-Key }
+    if ($key -and (Test-Path $key)) { Remove-Item -Recurse -Force $key; Write-Output "removed`t$key" }
     # The folder holds this script: PowerShell has read it already, so it can go too
     if (Test-Path $To) { Remove-Item -Recurse -Force $To; Write-Output "removed`t$To" }
     exit 0
@@ -162,10 +179,10 @@ if ($Command -eq "shortcuts" -or $Command -eq "self") {
     if (-not $To) { Fail "$Command needs -To" }
     if ($Command -eq "self") {
         if (-not $From) { Fail "self needs -From" }
-        if (-not (Test-Path (Join-Path $From "MealKitManager.exe"))) { Fail "No MealKitManager.exe in $From" }
+        if (-not (Test-Path (Join-Path $From $exeName))) { Fail "No $exeName in $From" }
         New-Item -ItemType Directory -Force $To | Out-Null
         # The running Manager is the package copy, so the installed exe isn't in use (an open installed Manager would block this: close it first)
-        foreach ($name in @("MealKitManager.exe", "install.ps1", "LICENSE")) {
+        foreach ($name in $packageFiles) {
             $src = Join-Path $From $name
             if (Test-Path $src) {
                 try { Copy-Item -LiteralPath $src -Destination (Join-Path $To $name) -Force }
@@ -188,7 +205,7 @@ try {
     if ($data.format -ne 1) { Fail "Release index format $($data.format) is newer than this Manager knows (1). Update MealKit Manager." }
     $engines = @($data.engines)
 
-    $mgr = $data.manager
+    $mgr = @($data.manager) | Where-Object { $_ -and (PlatformOf $_) -eq $platform } | Select-Object -First 1 # one entry, or one per platform
     if ($Command -eq "tool") {
         if (-not $Name -or -not $Root) { Fail "tool needs -Name and -Root" }
         $entry = @($data.tools) | Where-Object { $_ -and $_.name -eq $Name -and (PlatformOf $_) -eq $platform } | Select-Object -First 1
@@ -230,19 +247,19 @@ try {
         $new = Join-Path $temp "manager"
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         [IO.Compression.ZipFile]::ExtractToDirectory($zip, $new)
-        if (-not (Test-Path (Join-Path $new "MealKitManager.exe"))) { Fail "The package has no MealKitManager.exe." }
-        # Windows lets a running exe be renamed but not overwritten: the old one steps aside and is deleted on the next start
-        $exe = Join-Path $To "MealKitManager.exe"
-        $old = Join-Path $To "MealKitManager.old.exe"
+        if (-not (Test-Path (Join-Path $new $exeName))) { Fail "The package has no $exeName." }
+        # A running exe can be renamed but not overwritten (Windows: locked; Linux: text file busy): the old one steps aside and is deleted on the next start
+        $exe = Join-Path $To $exeName
+        $old = Join-Path $To $oldName
         if (Test-Path $old) { Remove-Item -Force $old -ErrorAction SilentlyContinue }
-        if (Test-Path $exe) { Rename-Item $exe "MealKitManager.old.exe" }
+        if (Test-Path $exe) { Rename-Item $exe $oldName }
         try {
-            foreach ($name in @("MealKitManager.exe", "install.ps1", "LICENSE")) {
+            foreach ($name in $packageFiles) {
                 $src = Join-Path $new $name
                 if (Test-Path $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $To $name) -Force }
             }
         } catch {
-            if (-not (Test-Path $exe) -and (Test-Path $old)) { Rename-Item $old "MealKitManager.exe" }
+            if (-not (Test-Path $exe) -and (Test-Path $old)) { Rename-Item $old $exeName }
             Fail "Could not replace the Manager files: $($_.Exception.Message)"
         }
         Register $To
