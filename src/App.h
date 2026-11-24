@@ -5,8 +5,11 @@
 #include "Catalog.h"
 #include "Job.h"
 
+#include <mkcontract/Modules.h>
+
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 
 struct SDL_Window;
@@ -219,6 +222,12 @@ private:
     void templateCards(const EngineTemplates& templates);
     char m_newLocation[512] = {};
     int m_newEngine = 0;
+    // Source modules to add to the new project (new_project.ps1 -Modules): the registry list of the chosen engine (module.ps1 search -Tsv), read in the background
+    Job m_moduleJob;
+    mkcontract::ModuleList m_registry;
+    std::string m_registryEngine; // engine folder the list was asked for
+    bool m_registryLoaded = false;
+    std::set<std::string> m_newModules;
 
     // Folder picker dialog (returns from another thread)
     std::mutex m_pickMutex;

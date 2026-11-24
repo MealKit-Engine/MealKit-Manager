@@ -1,7 +1,7 @@
 // MealKit Manager executable: SDL3 window + SDL_Renderer + Dear ImGui (same framework as the MkAudio tool). The actual screen is App.
 //   MealKitManager [--engine <engine folder>] [--lang ko|en] [--frames N --capture <png>]   (--new-dialog: open [New Project], --settings / --engines: open Settings at General / Engines, --tools: start on the Tools page)
 //   MealKitManager --list      prints project/engine/tool lists without a window (for tests/scripts)
-//   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty|empty2d|coop|<sample repo address or folder>]   new project without a window (same script as the screen's [New Project])
+//   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty|empty2d|coop|<sample repo address or folder>] [--modules a,b]   new project without a window (same script as the screen's [New Project])
 //   MealKitManager --open <project folder>                         opens that project in its engine's editor without a window
 //   MealKitManager --releases | --install-engine <version> | --install-tool <name>   the release index (MEALKIT_RELEASE_INDEX) / install from it
 //   (run from a downloaded package, with SETUP beside the exe)          installs itself with shortcuts and starts the installed copy (--no-launch: doesn't start it)
@@ -205,7 +205,7 @@ int printList(const mkmanager::Catalog& catalog) {
 }
 
 // --new: same as [New Project] on the screen (the first engine's new_project.ps1; on success, to the top of the recent list)
-int newProject(mkmanager::Catalog& catalog, const std::string& name, const std::string& path, const std::string& projectTemplate) {
+int newProject(mkmanager::Catalog& catalog, const std::string& name, const std::string& path, const std::string& projectTemplate, const std::string& modules) {
     if (catalog.engines().empty()) {
         std::printf("No engine found (use --engine <folder>)\n");
         return 1;
@@ -214,6 +214,7 @@ int newProject(mkmanager::Catalog& catalog, const std::string& name, const std::
     mkmanager::Job job;
     std::vector<std::string> args = {"-Name", name, "-Path", path};
     if (!projectTemplate.empty()) args.insert(args.end(), {"-Template", projectTemplate}); // engines from 0.7.21
+    if (!modules.empty()) args.insert(args.end(), {"-Modules", modules});                  // comma-separated source module names
     job.start("new project", mkmanager::powershellArgs(mkcontract::joinPath(engine.directory, "tools/new_project.ps1"), args));
     while (!job.takeFinished()) SDL_Delay(50);
     std::printf("%s", job.output().c_str());
@@ -409,7 +410,7 @@ bool onSomeDisplay(const Placement& p) {
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string engine, capture, language, newName, newPath, newTemplate, open;
+    std::string engine, capture, language, newName, newPath, newTemplate, newModules, open;
     long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
     bool list = false, releases = false, enginesTab = false, toolsTab = false, settings = false, newDialog = false, noLaunch = false, uninstall = false, assumeYes = false;
     std::string installVersion, installTool, askEngine;
@@ -417,6 +418,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--engine") == 0 && i + 1 < argc) engine = argv[++i];
         else if (std::strcmp(argv[i], "--new") == 0 && i + 1 < argc) newName = argv[++i];
         else if (std::strcmp(argv[i], "--template") == 0 && i + 1 < argc) newTemplate = argv[++i];
+        else if (std::strcmp(argv[i], "--modules") == 0 && i + 1 < argc) newModules = argv[++i];
         else if (std::strcmp(argv[i], "--path") == 0 && i + 1 < argc) newPath = argv[++i];
         else if (std::strcmp(argv[i], "--open") == 0 && i + 1 < argc) open = argv[++i];
         else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) frames = std::strtol(argv[++i], nullptr, 10);
@@ -453,7 +455,7 @@ int main(int argc, char** argv) {
         }
         mkmanager::Catalog catalog;
         catalog.load(engine);
-        if (!newName.empty()) return newProject(catalog, newName, newPath.empty() ? "." : newPath, newTemplate);
+        if (!newName.empty()) return newProject(catalog, newName, newPath.empty() ? "." : newPath, newTemplate, newModules);
         if (!open.empty()) return openProject(catalog, open);
         return printList(catalog);
     }

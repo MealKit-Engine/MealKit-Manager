@@ -126,6 +126,7 @@ struct TemplateCard {
 struct EngineTemplates {
     std::vector<TemplateCard> cards;
     bool sampleRepos = false; // the engine's new_project.ps1 takes a sample repo address or folder for -Template (it has samples.lock)
+    bool modules = false;     // its new_project.ps1 takes -Modules <names> (source modules to add)
 };
 // Reads only files of the engine folder: samples.lock ("sample <name> <url> <tag> <commit>"), templates/empty, templates/empty2d, templates/previews.
 // Engines before samples.lock offer arena (and empty from 0.7.21); coop, empty2d and sample repos only where their files are there

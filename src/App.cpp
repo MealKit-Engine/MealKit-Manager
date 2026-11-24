@@ -1889,6 +1889,35 @@ void App::newProjectPopup() {
     if (!templates.cards.empty()) templateCards(templates);
     const bool repoMode = m_newTemplate == repoCard;
     if (repoMode) ImGui::InputTextWithHint(tr("Sample repo"), tr("git address or folder of a sample repo"), m_newSampleRepo, sizeof(m_newSampleRepo));
+    if (templates.modules) {
+        const std::string& engineDir = engines[m_newEngine].directory;
+        if (m_registryEngine != engineDir && m_moduleJob.start("modules", powershellArgs(pathJoin(engineDir, "tools/module.ps1"), {"search", "-Tsv"}))) {
+            m_registryEngine = engineDir;
+            m_registry = {};
+            m_registryLoaded = false;
+            m_newModules.clear();
+        }
+        if (m_moduleJob.takeFinished() && m_registryEngine == engineDir) {
+            m_registry = mkcontract::parseModuleList(m_moduleJob.output());
+            m_registryLoaded = true;
+        }
+        ImGui::SeparatorText(tr("Modules"));
+        if (!m_registryLoaded) ImGui::TextDisabled("%s", tr("Loading the module list..."));
+        else if (!m_registry.error.empty()) ImGui::TextColored(theme::danger(), "%s", m_registry.error.c_str());
+        else if (m_registry.registry.empty()) ImGui::TextDisabled("%s", tr("No modules in the list."));
+        // Engine modules (the engine's own modules/<name>) come with every project; only source modules are picked here
+        ImGui::BeginChild("##modules", ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 6), ImGuiChildFlags_Borders);
+        for (const mkcontract::RegistryModule& module : m_registry.registry) {
+            if (mkcontract::pathExists(pathJoin(engineDir, "modules/" + module.name + "/module.txt"))) continue;
+            bool on = m_newModules.count(module.name) > 0;
+            if (ImGui::Checkbox(module.title.empty() ? module.name.c_str() : module.title.c_str(), &on)) {
+                if (on) m_newModules.insert(module.name);
+                else m_newModules.erase(module.name);
+            }
+            if (ImGui::IsItemHovered() && !module.summary.empty()) ImGui::SetTooltip("%s  %s", module.name.c_str(), module.summary.c_str());
+        }
+        ImGui::EndChild();
+    }
     ImGui::TextDisabled("%s", pathJoin(m_newLocation, m_newName).c_str());
     ImGui::Separator();
     ImGui::BeginDisabled(!nameOk || engines.empty() || !m_newLocation[0] || (repoMode && !m_newSampleRepo[0]));
@@ -1898,6 +1927,11 @@ void App::newProjectPopup() {
         std::vector<std::string> args = {"-Name", m_newName, "-Path", m_newLocation};
         if (repoMode) args.insert(args.end(), {"-Template", m_newSampleRepo});
         else if (m_newTemplate > 0 && m_newTemplate < cardCount) args.insert(args.end(), {"-Template", templates.cards[m_newTemplate].id});
+        if (templates.modules && !m_newModules.empty()) {
+            std::string list;
+            for (const std::string& name : m_newModules) list += (list.empty() ? "" : ",") + name; // new_project.ps1 splits the list at commas
+            args.insert(args.end(), {"-Modules", list});
+        }
         runScript(tr("New project"), pathJoin(engine.directory, "tools/new_project.ps1"), args, pathJoin(m_newLocation, m_newName));
         ImGui::CloseCurrentPopup();
     }

@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <sstream>
 
@@ -213,6 +214,11 @@ EngineTemplates engineTemplates(const std::string& engineDirectory) {
     std::map<std::string, Locked> locked;
     std::ifstream lock(mkcontract::pathOf(joinPath(engineDirectory, "samples.lock")));
     out.sampleRepos = lock.is_open();
+    {
+        std::ifstream script(mkcontract::pathOf(joinPath(engineDirectory, "tools/new_project.ps1")));
+        const std::string text((std::istreambuf_iterator<char>(script)), std::istreambuf_iterator<char>());
+        out.modules = text.find("$Modules") != std::string::npos;
+    }
     for (std::string line; std::getline(lock, line);) {
         std::istringstream words(line);
         std::string kind, name, url, tag, commit;
