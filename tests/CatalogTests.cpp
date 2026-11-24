@@ -278,6 +278,25 @@ void testReleases() {
     CHECK(!parseToolchain("[MealKit] error\n").checked);
 }
 
+void testTemplates(const fs::path& root) {
+    const fs::path engine = root / "tpl_engine";
+    fs::create_directories(engine / "templates/empty/source/app");
+    fs::create_directories(engine / "templates/empty2d/source");
+    fs::create_directories(engine / "templates/previews");
+    std::ofstream(engine / "templates/empty/source/app/GameSession.cpp") << "x";
+    std::ofstream(engine / "templates/previews/arena.png") << "x";
+    std::ofstream(engine / "templates/previews/coop.png") << "x";
+    // Before samples.lock: arena and empty (no coop, no sample repos), and empty2d where its folder is
+    EngineTemplates old = engineTemplates(engine.string());
+    CHECK(!old.sampleRepos && old.cards.size() == 3 && old.cards[0].id == "arena" && old.cards[1].id == "empty" && old.cards[2].id == "empty2d");
+    CHECK(old.cards[0].tag.empty() && !old.cards[0].preview.empty() && old.cards[1].preview.empty());
+    std::ofstream(engine / "samples.lock") << "# c\r\n@format sample-lock 1\r\nsample sandbox https://x/sample-sandbox v0.1.0 abc\r\nsample coop https://x/sample-coop v0.2.0 def\r\n";
+    const EngineTemplates now = engineTemplates(engine.string());
+    CHECK(now.sampleRepos && now.cards.size() == 4 && now.cards[3].id == "coop" && now.cards[3].sample == "coop");
+    CHECK(now.cards[0].sample == "sandbox" && now.cards[0].tag == "v0.1.0" && now.cards[0].commit == "abc" && now.cards[3].tag == "v0.2.0");
+    CHECK(now.cards[3].preview.find("coop.png") != std::string::npos && now.cards[1].tag.empty());
+}
+
 int main() {
     const fs::path root = fs::temp_directory_path() / "mkmanager_tests";
     std::error_code ec;
@@ -288,6 +307,7 @@ int main() {
     testReleases();
     testTempFolder(root);
     testEngineMatching(root);
+    testTemplates(root);
     fs::remove_all(root, ec);
     std::printf(g_failures ? "FAILED (%d)\n" : "PASS\n", g_failures);
     return g_failures ? 1 : 0;

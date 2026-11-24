@@ -1,7 +1,7 @@
 // MealKit Manager executable: SDL3 window + SDL_Renderer + Dear ImGui (same framework as the MkAudio tool). The actual screen is App.
-//   MealKitManager [--engine <engine folder>] [--lang ko|en] [--frames N --capture <png>]   (--settings / --engines: open Settings at General / Engines, --tools: start on the Tools page)
+//   MealKitManager [--engine <engine folder>] [--lang ko|en] [--frames N --capture <png>]   (--new-dialog: open [New Project], --settings / --engines: open Settings at General / Engines, --tools: start on the Tools page)
 //   MealKitManager --list      prints project/engine/tool lists without a window (for tests/scripts)
-//   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty]   new project without a window (same script as the screen's [New Project])
+//   MealKitManager [--engine <engine>] --new <name> --path <location> [--template arena|empty|empty2d|coop|<sample repo address or folder>]   new project without a window (same script as the screen's [New Project])
 //   MealKitManager --open <project folder>                         opens that project in its engine's editor without a window
 //   MealKitManager --releases | --install-engine <version> | --install-tool <name>   the release index (MEALKIT_RELEASE_INDEX) / install from it
 //   (run from a downloaded package, with SETUP beside the exe)          installs itself with shortcuts and starts the installed copy (--no-launch: doesn't start it)
@@ -411,7 +411,7 @@ bool onSomeDisplay(const Placement& p) {
 int main(int argc, char** argv) {
     std::string engine, capture, language, newName, newPath, newTemplate, open;
     long frames = 0; // --frames N: quit after N frames (--capture saves the last screen as PNG, for docs/tests)
-    bool list = false, releases = false, enginesTab = false, toolsTab = false, settings = false, noLaunch = false, uninstall = false, assumeYes = false;
+    bool list = false, releases = false, enginesTab = false, toolsTab = false, settings = false, newDialog = false, noLaunch = false, uninstall = false, assumeYes = false;
     std::string installVersion, installTool, askEngine;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--engine") == 0 && i + 1 < argc) engine = argv[++i];
@@ -427,6 +427,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--engines") == 0) enginesTab = true;
         else if (std::strcmp(argv[i], "--tools") == 0) toolsTab = true;
         else if (std::strcmp(argv[i], "--settings") == 0) settings = true;
+        else if (std::strcmp(argv[i], "--new-dialog") == 0) newDialog = true;
         else if (std::strcmp(argv[i], "--ask-engine") == 0 && i + 1 < argc) askEngine = argv[++i];
         else if (std::strcmp(argv[i], "--no-launch") == 0) noLaunch = true;
         else if (std::strcmp(argv[i], "--uninstall") == 0) uninstall = true;
@@ -504,6 +505,7 @@ int main(int argc, char** argv) {
     if (enginesTab) app.showEngines();
     if (toolsTab) app.showToolsPage();
     if (settings) app.showSettings();
+    if (newDialog) app.showNewProject();
     if (!askEngine.empty()) app.showEngineInstall(askEngine);
 
     long frame = 0;

@@ -39,7 +39,7 @@ Other platforms: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cma
 ```
 MealKitManager [--engine <engine folder>] [--lang ko|en]
 MealKitManager --list                                   print engines, projects and tools
-MealKitManager [--engine <folder>] --new <Name> --path <folder> [--template arena|empty]   create a project without a window (empty: engine 0.7.21+)
+MealKitManager [--engine <folder>] --new <Name> --path <folder> [--template arena|empty|empty2d|coop|<sample repo address or folder>]   create a project without a window (empty: engine 0.7.21+; coop, sample repos: engines with samples.lock)
 MealKitManager --open <project folder>                  open a project in its engine's editor
 MealKitManager (from an unzipped package, SETUP beside it)   install into %LOCALAPPDATA%\MealKit\manager with Start menu + desktop shortcuts, start it
 MealKitManager --releases                               engines in the release index (MEALKIT_RELEASE_INDEX, url or path)

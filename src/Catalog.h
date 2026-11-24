@@ -114,6 +114,22 @@ struct Toolchain {
     std::string dxcPath;
 };
 Toolchain parseToolchain(const std::string& output);
+
+// A project template an engine offers (engine tools\new_project.ps1 -Template <id>): the built-in ones and the engine's locked samples
+struct TemplateCard {
+    std::string id;       // "arena", "empty", "empty2d" or "coop"
+    std::string preview;  // templates/previews/<id>.png of the engine ("" if the engine has none)
+    std::string sample;   // the sample repo name for arena (sandbox) and coop, "" for the empty templates
+    std::string tag;      // the sample's locked version (samples.lock), "" for the empty templates
+    std::string commit;
+};
+struct EngineTemplates {
+    std::vector<TemplateCard> cards;
+    bool sampleRepos = false; // the engine's new_project.ps1 takes a sample repo address or folder for -Template (it has samples.lock)
+};
+// Reads only files of the engine folder: samples.lock ("sample <name> <url> <tag> <commit>"), templates/empty, templates/empty2d, templates/previews.
+// Engines before samples.lock offer arena (and empty from 0.7.21); coop, empty2d and sample repos only where their files are there
+EngineTemplates engineTemplates(const std::string& engineDirectory);
 // Installs Visual Studio Build Tools with the C++ workload (shown to copy when no compiler is found)
 #ifdef _WIN32
 inline constexpr const char* kInstallToolsCommand =

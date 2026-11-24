@@ -63,6 +63,7 @@ public:
     }
     void showToolsPage() { m_page = Page::Tools; }
     void showSettings() { m_openSettings = true; } // --settings: General
+    void showNewProject() { m_openNew = true; }     // --new-dialog
     void showEngineInstall(const std::string& version) { m_askEngine = version; } // --ask-engine <version>: the install dialog (screen check)
 
 private:
@@ -212,7 +213,10 @@ private:
 
     bool m_openNew = false;
     char m_newName[64] = "MyGame";
-    int m_newTemplate = 0; // 0 arena, 1 empty (new_project.ps1 -Template, engines from 0.7.21)
+    int m_newTemplate = 0; // index into the engine's template cards; one past the last = another sample repo (new_project.ps1 -Template <address or folder>)
+    char m_newSampleRepo[512] = {};
+    SDL_Texture* templateTexture(const std::string& file); // a template card's picture (cached in m_icons by file)
+    void templateCards(const EngineTemplates& templates);
     char m_newLocation[512] = {};
     int m_newEngine = 0;
 

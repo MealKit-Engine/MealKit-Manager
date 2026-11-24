@@ -1762,6 +1762,94 @@ void App::openWithMenu(const Project& p, bool busy) {
     ImGui::EndDisabled();
 }
 
+SDL_Texture* App::templateTexture(const std::string& file) {
+    auto found = m_icons.find(file);
+    if (found != m_icons.end()) return found->second;
+    SDL_Texture* texture = nullptr;
+    if (renderer && !file.empty()) {
+        if (SDL_Surface* surface = SDL_LoadPNG(file.c_str())) {
+            texture = SDL_CreateTextureFromSurface(renderer, surface);
+            if (texture) SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+            SDL_DestroySurface(surface);
+        }
+    }
+    m_icons[file] = texture;
+    return texture;
+}
+
+// Name and description of a built-in template card (the engine's templates and samples)
+static void templateTexts(const std::string& id, const char*& title, const char*& description) {
+    if (id == "empty") {
+        title = tr("Empty");
+        description = tr("One character per player on a floor, with the title, lobby and results screens.");
+    } else if (id == "empty2d") {
+        title = tr("Empty 2D");
+        description = tr("A 2D side view on the XY plane with a fixed orthographic camera and one character per player on a floor.");
+    } else if (id == "coop") {
+        title = tr("Co-op third person (sample game)");
+        description = tr("A copy of the co-op sample: third person characters, a camera rig and the match flow on hills.");
+    } else {
+        title = tr("Arena versus (sample game)");
+        description = tr("A copy of the sample game: physics party versus with AI, boxes, jump pads and cutscenes.");
+    }
+}
+
+void App::templateCards(const EngineTemplates& templates) {
+    const float dpi = ImGui::GetStyle().FontScaleDpi;
+    const ImVec2 picture(168.0f * dpi, 94.5f * dpi); // the previews are 16:9
+    const float pad = 6.0f * dpi;
+    const int count = static_cast<int>(templates.cards.size()) + (templates.sampleRepos ? 1 : 0);
+    const char* description = "";
+    float lastRight = 0;
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    for (int i = 0; i < count; ++i) {
+        const bool repo = i == static_cast<int>(templates.cards.size());
+        const char* title = tr("Sample repo");
+        const char* text = tr("A copy of another sample repo: give its git address or folder.");
+        std::string version;
+        std::string file;
+        if (!repo) {
+            const TemplateCard& card = templates.cards[i];
+            templateTexts(card.id, title, text);
+            version = card.tag;
+            file = card.preview;
+        }
+        const float cardWidth = picture.x + pad * 2;
+        const float right = ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
+        if (i > 0 && lastRight + ImGui::GetStyle().ItemSpacing.x + cardWidth <= right) ImGui::SameLine(); // else the card starts a new row
+        const ImVec2 size(picture.x + pad * 2, picture.y + pad * 3 + ImGui::GetTextLineHeightWithSpacing() * 2);
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        ImGui::PushID(i);
+        const bool selected = m_newTemplate == i;
+        if (ImGui::InvisibleButton("##card", size)) m_newTemplate = i;
+        const bool hovered = ImGui::IsItemHovered();
+        if (hovered) ImGui::SetTooltip("%s", title);
+        lastRight = ImGui::GetItemRectMax().x;
+        ImGui::PopID();
+        const ImVec2 end(pos.x + size.x, pos.y + size.y);
+        draw->AddRectFilled(pos, end, ImGui::GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg), 6.0f * dpi);
+        if (selected) draw->AddRect(pos, end, ImGui::GetColorU32(theme::accent()), 6.0f * dpi, 0, 2.0f * dpi);
+        const ImVec2 top(pos.x + pad, pos.y + pad);
+        if (SDL_Texture* texture = templateTexture(file)) {
+            draw->AddImageRounded(ImTextureRef(reinterpret_cast<ImTextureID>(texture)), top, ImVec2(top.x + picture.x, top.y + picture.y), ImVec2(0, 0),
+                                  ImVec2(1, 1), IM_COL32_WHITE, 4.0f * dpi);
+        } else {
+            draw->AddRectFilled(top, ImVec2(top.x + picture.x, top.y + picture.y), ImGui::GetColorU32(theme::gray(5)), 4.0f * dpi);
+            if (repo) {
+                const ImVec2 plus = ImGui::CalcTextSize("+");
+                draw->AddText(ImVec2(top.x + (picture.x - plus.x) * 0.5f, top.y + (picture.y - plus.y) * 0.5f), IM_COL32_WHITE, "+");
+            }
+        }
+        draw->PushClipRect(top, ImVec2(top.x + picture.x, end.y), true); // a long name is cut at the card edge (the tooltip has it whole)
+        draw->AddText(ImVec2(top.x, top.y + picture.y + pad), ImGui::GetColorU32(ImGuiCol_Text), title);
+        draw->PopClipRect();
+        if (!version.empty())
+            draw->AddText(ImVec2(top.x, top.y + picture.y + pad + ImGui::GetTextLineHeightWithSpacing()), ImGui::GetColorU32(ImGuiCol_TextDisabled), version.c_str());
+        if (selected) description = text;
+    }
+    ImGui::TextDisabled("%s", description);
+}
+
 void App::newProjectPopup() {
     if (m_openNew) {
         ImGui::OpenPopup("##new");
@@ -1793,28 +1881,23 @@ void App::newProjectPopup() {
             ImGui::EndCombo();
         }
     }
-    // Project templates: engines that have templates\empty take new_project.ps1 -Template (older ones only make arena projects)
-    const bool templates = !engines.empty() && fileExists(pathJoin(engines[m_newEngine].directory, "templates/empty/source/app/GameSession.cpp"));
-    if (!templates) m_newTemplate = 0;
-    else {
-        const char* const labels[] = {tr("Arena versus (sample game)"), tr("Empty")};
-        if (ImGui::BeginCombo(tr("Template"), labels[m_newTemplate])) {
-            for (int i = 0; i < 2; ++i)
-                if (ImGui::Selectable(labels[i], i == m_newTemplate)) m_newTemplate = i;
-            ImGui::EndCombo();
-        }
-        ImGui::TextDisabled("%s", m_newTemplate == 0
-                                      ? tr("A copy of the sample game: physics party versus with AI, boxes, jump pads and cutscenes.")
-                                      : tr("One character per player on a floor, with the title, lobby and results screens."));
-    }
+    // Project templates as cards: the engine's built-in ones and its locked samples (samples.lock), plus another sample repo by address or folder
+    const EngineTemplates templates = engines.empty() ? EngineTemplates{} : engineTemplates(engines[m_newEngine].directory);
+    const int cardCount = static_cast<int>(templates.cards.size());
+    const int repoCard = templates.sampleRepos ? cardCount : -1;
+    if (m_newTemplate < 0 || m_newTemplate > (repoCard >= 0 ? repoCard : cardCount - 1)) m_newTemplate = 0;
+    if (!templates.cards.empty()) templateCards(templates);
+    const bool repoMode = m_newTemplate == repoCard;
+    if (repoMode) ImGui::InputTextWithHint(tr("Sample repo"), tr("git address or folder of a sample repo"), m_newSampleRepo, sizeof(m_newSampleRepo));
     ImGui::TextDisabled("%s", pathJoin(m_newLocation, m_newName).c_str());
     ImGui::Separator();
-    ImGui::BeginDisabled(!nameOk || engines.empty() || !m_newLocation[0]);
+    ImGui::BeginDisabled(!nameOk || engines.empty() || !m_newLocation[0] || (repoMode && !m_newSampleRepo[0]));
     if (ImGui::Button(tr("Create"))) {
         saveProjectLocation(m_newLocation);
         const Engine& engine = engines[m_newEngine];
         std::vector<std::string> args = {"-Name", m_newName, "-Path", m_newLocation};
-        if (m_newTemplate == 1) args.insert(args.end(), {"-Template", "empty"});
+        if (repoMode) args.insert(args.end(), {"-Template", m_newSampleRepo});
+        else if (m_newTemplate > 0 && m_newTemplate < cardCount) args.insert(args.end(), {"-Template", templates.cards[m_newTemplate].id});
         runScript(tr("New project"), pathJoin(engine.directory, "tools\\new_project.ps1"), args, pathJoin(m_newLocation, m_newName));
         ImGui::CloseCurrentPopup();
     }

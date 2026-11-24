@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <map>
 #include <sstream>
 
 namespace mkmanager {
@@ -203,6 +205,34 @@ bool setProjectIcon(const std::string& projectDirectory, const std::string& pngF
         return false;
     }
     return true;
+}
+
+EngineTemplates engineTemplates(const std::string& engineDirectory) {
+    EngineTemplates out;
+    struct Locked { std::string tag, commit; };
+    std::map<std::string, Locked> locked;
+    std::ifstream lock(mkcontract::pathOf(joinPath(engineDirectory, "samples.lock")));
+    out.sampleRepos = lock.is_open();
+    for (std::string line; std::getline(lock, line);) {
+        std::istringstream words(line);
+        std::string kind, name, url, tag, commit;
+        if ((words >> kind >> name >> url >> tag >> commit) && kind == "sample") locked[name] = {tag, commit};
+    }
+    const auto add = [&](const std::string& id, const std::string& sample) {
+        TemplateCard card;
+        card.id = id;
+        card.sample = sample;
+        const std::string preview = joinPath(engineDirectory, "templates/previews/" + id + ".png");
+        if (pathExists(preview)) card.preview = preview;
+        const auto it = locked.find(sample);
+        if (it != locked.end()) { card.tag = it->second.tag; card.commit = it->second.commit; }
+        out.cards.push_back(card);
+    };
+    add("arena", "sandbox");
+    if (pathExists(joinPath(engineDirectory, "templates/empty/source/app/GameSession.cpp"))) add("empty", "");
+    if (pathExists(joinPath(engineDirectory, "templates/empty2d/source"))) add("empty2d", "");
+    if (locked.count("coop")) add("coop", "coop");
+    return out;
 }
 
 Toolchain parseToolchain(const std::string& output) {
