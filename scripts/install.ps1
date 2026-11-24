@@ -67,7 +67,7 @@ function Make-Shortcut([string]$folder, [string]$exe) {
     if ($onLinux) {
         New-Item -ItemType Directory -Force $folder | Out-Null
         $link = Join-Path $folder "mealkit-manager.desktop"
-        $text = "[Desktop Entry]`nType=Application`nName=MealKit Manager`nComment=Install MealKit engines and tools, open projects`nExec=`"$exe`"`nPath=$(Split-Path $exe -Parent)`nIcon=$(Join-Path (Split-Path $exe -Parent) "MealKitManager.png")`nTerminal=false`nCategories=Development;`n"
+        $text = "[Desktop Entry]`nType=Application`nName=MealKit Manager`nComment=Install MealKit engines and tools, open projects`nExec=`"$exe`"`nPath=$(Split-Path $exe -Parent)`nIcon=$(Join-Path (Split-Path $exe -Parent) "MealKitManager.png")`nTerminal=false`nCategories=Development;`nStartupNotify=true`nStartupWMClass=MealKitManager`n" # StartupWMClass: SDL uses the exe name as the Wayland app_id and X11 class; GNOME matches it for the dock icon
         [IO.File]::WriteAllText($link, $text, (New-Object Text.UTF8Encoding $false))
         Write-Output "shortcut`t$link"
         return

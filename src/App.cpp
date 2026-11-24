@@ -1794,101 +1794,242 @@ static void templateTexts(const std::string& id, const char*& title, const char*
     }
 }
 
-void App::templateCards(const EngineTemplates& templates) {
-    const float dpi = ImGui::GetStyle().FontScaleDpi;
-    const ImVec2 picture(168.0f * dpi, 94.5f * dpi); // the previews are 16:9
-    const float pad = 6.0f * dpi;
-    const int count = static_cast<int>(templates.cards.size()) + (templates.sampleRepos ? 1 : 0);
-    const char* description = "";
-    float lastRight = 0;
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    for (int i = 0; i < count; ++i) {
-        const bool repo = i == static_cast<int>(templates.cards.size());
-        const char* title = tr("Sample repo");
-        const char* text = tr("A copy of another sample repo: give its git address or folder.");
-        std::string version;
-        std::string file;
-        if (!repo) {
-            const TemplateCard& card = templates.cards[i];
-            templateTexts(card.id, title, text);
-            version = card.tag;
-            file = card.preview;
-        }
-        const float cardWidth = picture.x + pad * 2;
-        const float right = ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
-        if (i > 0 && lastRight + ImGui::GetStyle().ItemSpacing.x + cardWidth <= right) ImGui::SameLine(); // else the card starts a new row
-        const ImVec2 size(picture.x + pad * 2, picture.y + pad * 3 + ImGui::GetTextLineHeightWithSpacing() * 2);
-        const ImVec2 pos = ImGui::GetCursorScreenPos();
-        ImGui::PushID(i);
-        const bool selected = m_newTemplate == i;
-        if (ImGui::InvisibleButton("##card", size)) m_newTemplate = i;
-        const bool hovered = ImGui::IsItemHovered();
-        if (hovered) ImGui::SetTooltip("%s", title);
-        lastRight = ImGui::GetItemRectMax().x;
-        ImGui::PopID();
-        const ImVec2 end(pos.x + size.x, pos.y + size.y);
-        draw->AddRectFilled(pos, end, ImGui::GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg), 6.0f * dpi);
-        if (selected) draw->AddRect(pos, end, ImGui::GetColorU32(theme::accent()), 6.0f * dpi, 0, 2.0f * dpi);
-        const ImVec2 top(pos.x + pad, pos.y + pad);
-        if (SDL_Texture* texture = templateTexture(file)) {
-            draw->AddImageRounded(ImTextureRef(reinterpret_cast<ImTextureID>(texture)), top, ImVec2(top.x + picture.x, top.y + picture.y), ImVec2(0, 0),
-                                  ImVec2(1, 1), IM_COL32_WHITE, 4.0f * dpi);
-        } else {
-            draw->AddRectFilled(top, ImVec2(top.x + picture.x, top.y + picture.y), ImGui::GetColorU32(theme::gray(5)), 4.0f * dpi);
-            if (repo) {
-                const ImVec2 plus = ImGui::CalcTextSize("+");
-                draw->AddText(ImVec2(top.x + (picture.x - plus.x) * 0.5f, top.y + (picture.y - plus.y) * 0.5f), IM_COL32_WHITE, "+");
-            }
-        }
-        draw->PushClipRect(top, ImVec2(top.x + picture.x, end.y), true); // a long name is cut at the card edge (the tooltip has it whole)
-        draw->AddText(ImVec2(top.x, top.y + picture.y + pad), ImGui::GetColorU32(ImGuiCol_Text), title);
-        draw->PopClipRect();
-        if (!version.empty())
-            draw->AddText(ImVec2(top.x, top.y + picture.y + pad + ImGui::GetTextLineHeightWithSpacing()), ImGui::GetColorU32(ImGuiCol_TextDisabled), version.c_str());
-        if (selected) description = text;
+// Text cut to a width with "..." at the end (card titles, the path line)
+static std::string ellipsize(const std::string& text, float width) {
+    if (ImGui::CalcTextSize(text.c_str()).x <= width) return text;
+    const float dots = ImGui::CalcTextSize("...").x;
+    size_t end = text.size();
+    while (end > 0 && ImGui::CalcTextSize(text.c_str(), text.c_str() + end).x + dots > width) {
+        --end;
+        while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80) --end; // stay on a UTF-8 character start
     }
-    ImGui::TextDisabled("%s", description);
+    return text.substr(0, end) + "...";
 }
 
+// What a template card shows: name, description, version and preview picture (repo = the "another sample repo" card)
+struct TemplateView {
+    const char* title = "";
+    const char* description = "";
+    std::string version;
+    std::string preview;
+    bool repo = false;
+};
+static TemplateView templateView(const EngineTemplates& templates, int index) {
+    TemplateView view;
+    if (index >= static_cast<int>(templates.cards.size())) {
+        view.repo = true;
+        view.title = tr("Sample repo");
+        view.description = tr("A copy of another sample repo: give its git address or folder.");
+        return view;
+    }
+    const TemplateCard& card = templates.cards[index];
+    templateTexts(card.id, view.title, view.description);
+    view.version = card.tag;
+    view.preview = card.preview;
+    return view;
+}
+
+// The gallery (left side of New Project, like the Unity Hub and Unreal project browsers): starting templates first, then sample games.
+// Cards fill the width in even columns; a click picks the template, its details and settings are on the right
+void App::templateCards(const EngineTemplates& templates) {
+    const float dpi = ImGui::GetStyle().FontScaleDpi;
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float pad = 8.0f * dpi;
+    const float width = ImGui::GetContentRegionAvail().x;
+    const int columns = std::max(1, static_cast<int>((width + style.ItemSpacing.x) / (ImGui::GetFontSize() * 11.0f + style.ItemSpacing.x)));
+    const float cardWidth = (width - style.ItemSpacing.x * (columns - 1)) / columns;
+    const ImVec2 picture(cardWidth - pad * 2, (cardWidth - pad * 2) * 9.0f / 16.0f); // the previews are 16:9
+    const ImVec2 size(cardWidth, picture.y + pad * 3 + ImGui::GetTextLineHeight());
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+
+    std::vector<int> starters, samples;
+    for (int i = 0; i < static_cast<int>(templates.cards.size()); ++i) (templates.cards[i].sample.empty() ? starters : samples).push_back(i);
+    if (templates.sampleRepos) samples.push_back(static_cast<int>(templates.cards.size()));
+
+    const auto group = [&](const char* heading, const std::vector<int>& cards) {
+        if (cards.empty()) return;
+        {
+            theme::FontScope font(theme::kBody, true);
+            ImGui::TextColored(theme::gray(11), "%s", heading);
+        }
+        for (size_t k = 0; k < cards.size(); ++k) {
+            const int i = cards[k];
+            const TemplateView view = templateView(templates, i);
+            if (k % columns != 0) ImGui::SameLine();
+            const ImVec2 pos = ImGui::GetCursorScreenPos();
+            ImGui::PushID(i);
+            if (ImGui::InvisibleButton("##card", size)) m_newTemplate = i;
+            const bool hovered = ImGui::IsItemHovered();
+            ImGui::PopID();
+            const bool selected = m_newTemplate == i;
+            const ImVec2 end(pos.x + size.x, pos.y + size.y);
+            const ImU32 fill = ImGui::GetColorU32(selected ? theme::gray(5) : hovered ? theme::gray(4) : theme::gray(3));
+            draw->AddRectFilled(pos, end, fill, theme::kCardRounding * dpi);
+            if (selected) draw->AddRect(pos, end, ImGui::GetColorU32(theme::accent()), theme::kCardRounding * dpi, 0, 2.0f * dpi);
+            const ImVec2 top(pos.x + pad, pos.y + pad);
+            const ImVec2 bottom(top.x + picture.x, top.y + picture.y);
+            if (SDL_Texture* texture = templateTexture(view.preview)) {
+                draw->AddImageRounded(ImTextureRef(reinterpret_cast<ImTextureID>(texture)), top, bottom, ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE,
+                                      6.0f * dpi);
+            } else {
+                draw->AddRectFilled(top, bottom, ImGui::GetColorU32(theme::gray(2)), 6.0f * dpi);
+                const char* mark = view.repo ? (iconFont ? kIconAdd : "+") : (iconFont ? kIconFolder : "");
+                theme::FontScope font(theme::kTitle);
+                const ImVec2 markSize = ImGui::CalcTextSize(mark);
+                draw->AddText(ImVec2(top.x + (picture.x - markSize.x) * 0.5f, top.y + (picture.y - markSize.y) * 0.5f),
+                              ImGui::GetColorU32(theme::gray(9)), mark);
+            }
+            // Name on the left, the sample's locked version on the right of the same line
+            const float textY = bottom.y + pad;
+            float versionWidth = 0;
+            if (!view.version.empty()) {
+                versionWidth = ImGui::CalcTextSize(view.version.c_str()).x;
+                draw->AddText(ImVec2(bottom.x - versionWidth, textY), ImGui::GetColorU32(theme::gray(10)), view.version.c_str());
+                versionWidth += pad;
+            }
+            const std::string title = ellipsize(view.title, picture.x - versionWidth);
+            {
+                theme::FontScope font(theme::kBody, true);
+                draw->AddText(ImVec2(top.x, textY), ImGui::GetColorU32(selected ? theme::gray(12) : theme::gray(11)), title.c_str());
+            }
+            if (hovered && title != view.title) ImGui::SetTooltip("%s", view.title);
+        }
+        ImGui::Dummy(ImVec2(0, pad));
+    };
+    group(tr("Templates"), starters);
+    group(tr("Sample games"), samples);
+}
+
+// A field label above its field (S2: labels on top, so the fields line up and the names aren't cut)
+static void fieldLabel(const char* label) {
+    ImGui::Spacing();
+    ImGui::TextColored(theme::gray(11), "%s", label);
+}
+
+// New Project, laid out like the Unity Hub / Unreal project browser: the template gallery on the left, the chosen template's
+// preview with the project settings on the right, and [Create Project] always visible at the bottom right
 void App::newProjectPopup() {
     if (m_openNew) {
         ImGui::OpenPopup("##new");
         m_openNew = false;
     }
+    const float dpi = ImGui::GetStyle().FontScaleDpi;
+    const ImGuiStyle& style = ImGui::GetStyle();
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x * 0.6f, 0));
-    if (!ImGui::BeginPopupModal("##new", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize)) return;
-    ImGui::TextUnformatted(tr("New Project"));
-    ImGui::Separator();
+    const ImVec2 popupSize(std::min(viewport->WorkSize.x * 0.92f, 1280.0f * dpi), std::min(viewport->WorkSize.y * 0.9f, 820.0f * dpi));
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(popupSize, ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f * dpi, 16.0f * dpi));
+    const bool open = ImGui::BeginPopupModal("##new", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                                                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleVar();
+    if (!open) return;
+    const bool appearing = ImGui::IsWindowAppearing();
+
+    // Title line with the close button on the right
+    {
+        theme::FontScope font(theme::kSubtitle, true);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(tr("New Project"));
+    }
+    ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::GetFrameHeight());
+    bool close = iconButton(kIconCancel, tr("Close"));
+    ImGui::Spacing();
+
     const std::vector<Engine>& engines = m_catalog.engines();
     if (m_newEngine >= static_cast<int>(engines.size())) m_newEngine = 0;
-
-    ImGui::InputText(tr("Name"), m_newName, sizeof(m_newName));
-    const bool nameOk = validGameName(m_newName);
-    if (!nameOk) ImGui::TextColored(theme::danger(), "%s", tr("Start with a letter; letters, digits and _ only (it becomes the exe name)."));
-    ImGui::InputText(tr("Location"), m_newLocation, sizeof(m_newLocation));
-    ImGui::SameLine();
-    if (iconButton(kIconFolder, tr("Location"))) pickFolder(2);
-    if (engines.empty()) ImGui::TextColored(theme::danger(), "%s", tr("No engine found. Add one on the Engines tab."));
-    else {
-        const std::string preview = engines[m_newEngine].version + "  " + engines[m_newEngine].directory;
-        if (ImGui::BeginCombo(tr("Engine"), preview.c_str())) {
-            for (int i = 0; i < static_cast<int>(engines.size()); ++i) {
-                const std::string item = engines[i].version + "  " + engines[i].directory;
-                if (ImGui::Selectable(item.c_str(), i == m_newEngine)) m_newEngine = i;
-            }
-            ImGui::EndCombo();
-        }
-    }
-    // Project templates as cards: the engine's built-in ones and its locked samples (samples.lock), plus another sample repo by address or folder
     const EngineTemplates templates = engines.empty() ? EngineTemplates{} : engineTemplates(engines[m_newEngine].directory);
     const int cardCount = static_cast<int>(templates.cards.size());
     const int repoCard = templates.sampleRepos ? cardCount : -1;
     if (m_newTemplate < 0 || m_newTemplate > (repoCard >= 0 ? repoCard : cardCount - 1)) m_newTemplate = 0;
-    if (!templates.cards.empty()) templateCards(templates);
     const bool repoMode = m_newTemplate == repoCard;
-    if (repoMode) ImGui::InputTextWithHint(tr("Sample repo"), tr("git address or folder of a sample repo"), m_newSampleRepo, sizeof(m_newSampleRepo));
+
+    const float footer = ImGui::GetFrameHeight() + style.ItemSpacing.y * 2 + 12.0f * dpi;
+    const float bodyHeight = ImGui::GetContentRegionAvail().y - footer;
+    const float avail = ImGui::GetContentRegionAvail().x;
+    const float detailWidth = std::clamp(avail * 0.36f, 320.0f * dpi, 440.0f * dpi);
+
+    // Left: the gallery
+    ImGui::BeginChild("##gallery", ImVec2(avail - detailWidth - style.ItemSpacing.x * 2, bodyHeight));
+    if (engines.empty()) ImGui::TextColored(theme::danger(), "%s", tr("No engine found. Add one on the Engines tab."));
+    else if (templates.cards.empty() && !templates.sampleRepos) ImGui::TextDisabled("%s", tr("This engine has no project templates."));
+    else templateCards(templates);
+    ImGui::EndChild();
+    ImGui::SameLine(0, style.ItemSpacing.x * 2);
+
+    // Right: the chosen template, then the project settings
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, theme::gray(2));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, theme::kCardRounding * dpi);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f * dpi, 16.0f * dpi));
+    ImGui::BeginChild("##details", ImVec2(detailWidth, bodyHeight), ImGuiChildFlags_AlwaysUseWindowPadding);
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+    const float fieldWidth = ImGui::GetContentRegionAvail().x;
+    if (!engines.empty() && (cardCount > 0 || repoCard >= 0)) {
+        const TemplateView view = templateView(templates, m_newTemplate);
+        // The preview keeps 16:9 but takes at most a third of the panel height, so the settings stay in view without scrolling
+        const float pictureHeight = std::min(fieldWidth * 9.0f / 16.0f, bodyHeight * 0.2f);
+        const ImVec2 picture(pictureHeight * 16.0f / 9.0f, pictureHeight);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (fieldWidth - picture.x) * 0.5f);
+        const ImVec2 top = ImGui::GetCursorScreenPos();
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        if (SDL_Texture* texture = templateTexture(view.preview))
+            draw->AddImageRounded(ImTextureRef(reinterpret_cast<ImTextureID>(texture)), top, ImVec2(top.x + picture.x, top.y + picture.y), ImVec2(0, 0),
+                                  ImVec2(1, 1), IM_COL32_WHITE, 8.0f * dpi);
+        else draw->AddRectFilled(top, ImVec2(top.x + picture.x, top.y + picture.y), ImGui::GetColorU32(theme::gray(3)), 8.0f * dpi);
+        ImGui::Dummy(picture);
+        ImGui::Spacing();
+        {
+            theme::FontScope font(theme::kBodyLarge, true);
+            ImGui::TextWrapped("%s", view.title);
+        }
+        if (!view.version.empty()) ImGui::TextColored(theme::gray(10), "%s", view.version.c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::gray(11));
+        ImGui::TextWrapped("%s", view.description);
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+        ImGui::Separator();
+    }
+
+    fieldLabel(tr("Name"));
+    if (appearing) ImGui::SetKeyboardFocusHere();
+    ImGui::SetNextItemWidth(fieldWidth);
+    ImGui::InputText("##name", m_newName, sizeof(m_newName));
+    const bool nameOk = validGameName(m_newName);
+    if (!nameOk) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::danger());
+        ImGui::TextWrapped("%s", tr("Start with a letter; letters, digits and _ only (it becomes the exe name)."));
+        ImGui::PopStyleColor();
+    }
+
+    fieldLabel(tr("Location"));
+    ImGui::SetNextItemWidth(fieldWidth - ImGui::GetFrameHeight() - style.ItemSpacing.x);
+    ImGui::InputText("##location", m_newLocation, sizeof(m_newLocation));
+    ImGui::SameLine();
+    if (iconButton(kIconFolder, tr("Location"))) pickFolder(2);
+
+    if (!engines.empty()) {
+        fieldLabel(tr("Engine"));
+        ImGui::SetNextItemWidth(fieldWidth);
+        if (ImGui::BeginCombo("##engine", engines[m_newEngine].version.c_str())) {
+            for (int i = 0; i < static_cast<int>(engines.size()); ++i) {
+                ImGui::PushID(i);
+                if (ImGui::Selectable(engines[i].version.c_str(), i == m_newEngine)) m_newEngine = i;
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", engines[i].directory.c_str());
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SetItemTooltip("%s", engines[m_newEngine].directory.c_str());
+    }
+
+    if (repoMode) {
+        fieldLabel(tr("Sample repo"));
+        ImGui::SetNextItemWidth(fieldWidth);
+        ImGui::InputTextWithHint("##repo", tr("git address or folder of a sample repo"), m_newSampleRepo, sizeof(m_newSampleRepo));
+    }
+
     if (templates.modules) {
         const std::string& engineDir = engines[m_newEngine].directory;
         if (m_registryEngine != engineDir && m_moduleJob.start("modules", powershellArgs(pathJoin(engineDir, "tools/module.ps1"), {"search", "-Tsv"}))) {
@@ -1901,27 +2042,58 @@ void App::newProjectPopup() {
             m_registry = mkcontract::parseModuleList(m_moduleJob.output());
             m_registryLoaded = true;
         }
-        ImGui::SeparatorText(tr("Modules"));
-        if (!m_registryLoaded) ImGui::TextDisabled("%s", tr("Loading the module list..."));
-        else if (!m_registry.error.empty()) ImGui::TextColored(theme::danger(), "%s", m_registry.error.c_str());
-        else if (m_registry.registry.empty()) ImGui::TextDisabled("%s", tr("No modules in the list."));
-        // Engine modules (the engine's own modules/<name>) come with every project; only source modules are picked here
-        ImGui::BeginChild("##modules", ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 6), ImGuiChildFlags_Borders);
-        for (const mkcontract::RegistryModule& module : m_registry.registry) {
-            if (mkcontract::pathExists(pathJoin(engineDir, "modules/" + module.name + "/module.txt"))) continue;
-            bool on = m_newModules.count(module.name) > 0;
-            if (ImGui::Checkbox(module.title.empty() ? module.name.c_str() : module.title.c_str(), &on)) {
-                if (on) m_newModules.insert(module.name);
-                else m_newModules.erase(module.name);
+        ImGui::Spacing();
+        const std::string header = m_newModules.empty() ? std::string(tr("Modules")) : trf("Modules (%d selected)", static_cast<int>(m_newModules.size()));
+        if (ImGui::CollapsingHeader((header + "###modules").c_str())) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)); // wrapped, so the sentence isn't cut at the panel edge
+            ImGui::TextWrapped("%s", tr("Engine modules come with every project. Pick extra source modules here."));
+            ImGui::PopStyleColor();
+            if (!m_registryLoaded) ImGui::TextDisabled("%s", tr("Loading the module list..."));
+            else if (!m_registry.error.empty()) ImGui::TextColored(theme::danger(), "%s", m_registry.error.c_str());
+            else if (m_registry.registry.empty()) ImGui::TextDisabled("%s", tr("No modules in the list."));
+            for (const mkcontract::RegistryModule& module : m_registry.registry) {
+                if (mkcontract::pathExists(pathJoin(engineDir, "modules/" + module.name + "/module.txt"))) continue;
+                bool on = m_newModules.count(module.name) > 0;
+                if (ImGui::Checkbox(module.title.empty() ? module.name.c_str() : module.title.c_str(), &on)) {
+                    if (on) m_newModules.insert(module.name);
+                    else m_newModules.erase(module.name);
+                }
+                if (!module.summary.empty()) ImGui::SetItemTooltip("%s  %s", module.name.c_str(), module.summary.c_str());
             }
-            if (ImGui::IsItemHovered() && !module.summary.empty()) ImGui::SetTooltip("%s  %s", module.name.c_str(), module.summary.c_str());
         }
-        ImGui::EndChild();
     }
-    ImGui::TextDisabled("%s", pathJoin(m_newLocation, m_newName).c_str());
+    // Focusing the name field scrolls the panel to it; keep the preview in view for the first frames instead
+    static int topFrames = 0;
+    if (appearing) topFrames = 3;
+    if (topFrames > 0) {
+        ImGui::SetScrollY(0);
+        --topFrames;
+    }
+    ImGui::EndChild();
+
+    // Footer: where the project goes (or why it can't be made) on the left, the buttons on the right
+    ImGui::Dummy(ImVec2(0, 4.0f * dpi));
     ImGui::Separator();
-    ImGui::BeginDisabled(!nameOk || engines.empty() || !m_newLocation[0] || (repoMode && !m_newSampleRepo[0]));
-    if (ImGui::Button(tr("Create"))) {
+    ImGui::Dummy(ImVec2(0, 4.0f * dpi));
+    const std::string target = pathJoin(m_newLocation, m_newName);
+    const bool exists = m_newName[0] && m_newLocation[0] && mkcontract::pathExists(target);
+    const bool canCreate = nameOk && !exists && !engines.empty() && m_newLocation[0] && (!repoMode || m_newSampleRepo[0]);
+
+    float buttons;
+    {
+        theme::FontScope font(theme::kBody, true);
+        buttons = ImGui::CalcTextSize(iconLabel(kIconAdd, tr("Create Project")).c_str()).x + ImGui::CalcTextSize("  ").x + style.FramePadding.x * 2;
+    }
+    // Only a problem is worth a line here: the folder is the Location field above, and [x] / Esc already close the dialog
+    const float lineWidth = ImGui::GetContentRegionAvail().x - buttons - style.ItemSpacing.x * 2;
+    ImGui::AlignTextToFramePadding();
+    if (exists) ImGui::TextColored(theme::warning(), "%s", ellipsize(trf("%s already exists. Choose another name or location.", target.c_str()), lineWidth).c_str());
+    else if (!m_newLocation[0]) ImGui::TextColored(theme::warning(), "%s", tr("Choose a location."));
+    else ImGui::NewLine();
+    ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - buttons);
+    ImGui::BeginDisabled(!canCreate);
+    const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+    if ((actionButton(kIconAdd, tr("Create Project"), true) || enter) && canCreate) {
         saveProjectLocation(m_newLocation);
         const Engine& engine = engines[m_newEngine];
         std::vector<std::string> args = {"-Name", m_newName, "-Path", m_newLocation};
@@ -1932,12 +2104,11 @@ void App::newProjectPopup() {
             for (const std::string& name : m_newModules) list += (list.empty() ? "" : ",") + name; // new_project.ps1 splits the list at commas
             args.insert(args.end(), {"-Modules", list});
         }
-        runScript(tr("New project"), pathJoin(engine.directory, "tools/new_project.ps1"), args, pathJoin(m_newLocation, m_newName));
-        ImGui::CloseCurrentPopup();
+        runScript(tr("New project"), pathJoin(engine.directory, "tools/new_project.ps1"), args, target);
+        close = true;
     }
     ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (ImGui::Button(tr("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    if (close || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }
 
