@@ -1898,7 +1898,7 @@ void App::newProjectPopup() {
         std::vector<std::string> args = {"-Name", m_newName, "-Path", m_newLocation};
         if (repoMode) args.insert(args.end(), {"-Template", m_newSampleRepo});
         else if (m_newTemplate > 0 && m_newTemplate < cardCount) args.insert(args.end(), {"-Template", templates.cards[m_newTemplate].id});
-        runScript(tr("New project"), pathJoin(engine.directory, "tools\\new_project.ps1"), args, pathJoin(m_newLocation, m_newName));
+        runScript(tr("New project"), pathJoin(engine.directory, "tools/new_project.ps1"), args, pathJoin(m_newLocation, m_newName));
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndDisabled();

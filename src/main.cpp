@@ -214,14 +214,14 @@ int newProject(mkmanager::Catalog& catalog, const std::string& name, const std::
     mkmanager::Job job;
     std::vector<std::string> args = {"-Name", name, "-Path", path};
     if (!projectTemplate.empty()) args.insert(args.end(), {"-Template", projectTemplate}); // engines from 0.7.21
-    job.start("new project", mkmanager::powershellArgs(engine.directory + "\\tools\\new_project.ps1", args));
+    job.start("new project", mkmanager::powershellArgs(mkcontract::joinPath(engine.directory, "tools/new_project.ps1"), args));
     while (!job.takeFinished()) SDL_Delay(50);
     std::printf("%s", job.output().c_str());
     if (job.exitCode() != 0) {
         std::printf("new project failed (exit code %d)\n", job.exitCode());
         return 1;
     }
-    catalog.addRecent(path + "\\" + name);
+    catalog.addRecent(mkcontract::joinPath(path, name));
     std::printf("created %s\\%s with engine %s\n", path.c_str(), name.c_str(), engine.version.c_str());
     return 0;
 }
