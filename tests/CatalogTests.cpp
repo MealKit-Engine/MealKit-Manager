@@ -46,7 +46,7 @@ void testCatalog(const fs::path& root) {
     // Engine: VERSION + new_project.ps1 + a built editor. Its sample inside the repo is a project too (no engine line)
     write(engine / "VERSION", "0.5.2\n");
     write(engine / "tools" / "new_project.ps1", "#\n");
-    write(engine / "build" / "Editor" / "bin" / (std::string("MealKitEditor") + mkmanager::kExeSuffix), "");
+    write(engine / "build" / mkmanager::kBuildOs / "Editor" / "bin" / (std::string("MealKitEditor") + mkmanager::kExeSuffix), "");
     write(engine / "samples" / "sandbox" / "mealkit.project", "# comment\n@format project 1\nname sandbox\n");
     write(game / "mealkit.project", "\xEF\xBB\xBF# MealKit project\n@format project 1\nname Game\nengine " + str(engine) +
                                         "\nengineVersion 0.5.2\ncreated 2026-10-01\n");
@@ -121,6 +121,10 @@ void testCatalog(const fs::path& root) {
         CHECK(catalog.engines()[0].version == "0.6.0" && catalog.engines()[0].editorExe.empty());
         CHECK(catalog.engines()[1].version == "0.5.2");
     }
+    // An engine from before build/<os>/ has its editor in build/Editor/bin
+    write(engine2 / "build" / "Editor" / "bin" / (std::string("MealKitEditor") + mkmanager::kExeSuffix), "");
+    catalog.load();
+    if (catalog.engines().size() == 2) CHECK(!catalog.engines()[0].editorExe.empty());
 }
 
 void testKeys(const fs::path& root) {

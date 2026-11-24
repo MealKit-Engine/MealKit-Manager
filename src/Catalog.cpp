@@ -250,8 +250,14 @@ bool readEngine(const std::string& directory, Engine& out) {
     out.directory = normalizeDirectory(directory);
     const std::vector<std::string> version = readList(joinPath(out.directory, "VERSION"));
     if (!version.empty()) out.version = version[0];
-    const std::string editor = joinPath(out.directory, std::string("build/Editor/bin/MealKitEditor") + kExeSuffix);
-    if (pathExists(editor)) out.editorExe = normalizeDirectory(editor);
+    // build/<os>/Editor since engine 0.9.13; an older engine (or one installed from an older package) has build/Editor
+    for (const std::string tree : {std::string("build/") + kBuildOs + "/Editor", std::string("build/Editor")}) {
+        const std::string editor = joinPath(out.directory, tree + "/bin/MealKitEditor" + kExeSuffix);
+        if (pathExists(editor)) {
+            out.editorExe = normalizeDirectory(editor);
+            break;
+        }
+    }
     out.valid = !out.version.empty() && pathExists(joinPath(out.directory, "tools/new_project.ps1"));
     return out.valid;
 }

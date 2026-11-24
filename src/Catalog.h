@@ -4,7 +4,7 @@
 // Connects to the engine only through files. The shared ones (the user folder and its lists, tool manifests) are read with the
 // tool contract library mkcontract (MealKit-Contract, third_party/mkcontract, its docs/CONTRACT.md), the same code the engine editor uses. Read here:
 //   mealkit.project in the project folder         name, engine (engine folder), engineVersion, created lines
-//   engine folder                                 VERSION, build\Editor\bin\MealKitEditor.exe, tools\new_project.ps1
+//   engine folder                                 VERSION, build\<os>\Editor\bin\MealKitEditor.exe (or build\Editor\bin before 0.9.13), tools\new_project.ps1
 #include <mkcontract/Files.h>
 #include <mkcontract/Live.h>
 #include <mkcontract/Tool.h>
@@ -20,6 +20,14 @@ namespace mkmanager {
 inline constexpr const char* kExeSuffix = ".exe";
 #else
 inline constexpr const char* kExeSuffix = "";
+#endif
+// The OS folder of an engine's build trees, build/<os>/<config> (engine tools/build_dirs.ps1)
+#if defined(_WIN32)
+inline constexpr const char* kBuildOs = "windows";
+#elif defined(__APPLE__)
+inline constexpr const char* kBuildOs = "macos";
+#else
+inline constexpr const char* kBuildOs = "linux";
 #endif
 
 // Package platform of the release index: entries without one are Windows (the index's format 1 before Linux)
