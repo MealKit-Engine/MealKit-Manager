@@ -43,7 +43,10 @@ bool Job::start(const std::string& label, std::vector<std::string> args) {
         SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER, const_cast<char**>(list.data()));
         SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER, SDL_PROCESS_STDIO_APP);
         SDL_SetBooleanProperty(props, SDL_PROP_PROCESS_CREATE_STDERR_TO_STDOUT_BOOLEAN, true);
-        SDL_SetBooleanProperty(props, SDL_PROP_PROCESS_CREATE_BACKGROUND_BOOLEAN, true); // without a console window
+#ifdef _WIN32
+        // Without a console window. Windows only: elsewhere SDL can't read a background process's exit code (always 0)
+        SDL_SetBooleanProperty(props, SDL_PROP_PROCESS_CREATE_BACKGROUND_BOOLEAN, true);
+#endif
         SDL_Process* process = SDL_CreateProcessWithProperties(props);
         SDL_DestroyProperties(props);
         if (!process) {
@@ -74,7 +77,12 @@ bool Job::takeFinished() {
 
 bool launchDetached(const std::vector<std::string>& args, std::string& error) {
     const std::vector<const char*> list = argv(args);
-    SDL_Process* process = SDL_CreateProcess(list.data(), false);
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER, const_cast<char**>(list.data()));
+    // Background: on Linux the program is adopted by init, so it leaves no zombie when it exits while this one still runs
+    SDL_SetBooleanProperty(props, SDL_PROP_PROCESS_CREATE_BACKGROUND_BOOLEAN, true);
+    SDL_Process* process = SDL_CreateProcessWithProperties(props);
+    SDL_DestroyProperties(props);
     if (!process) {
         error = SDL_GetError();
         return false;
