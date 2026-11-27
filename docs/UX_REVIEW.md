@@ -5,7 +5,7 @@
 
 ## 1. 지금 무엇이 이상한가
 
-화면 확인: `build\bin\MealKitManager.exe --frames 30 --capture` (사용자 폴더 실제 목록).
+화면 확인: `build\windows\bin\MealKitManager.exe --frames 30 --capture` (사용자 폴더 실제 목록).
 
 | # | 문제 | 지금 모습 | 왜 문제인가 |
 |---|---|---|---|

@@ -11,7 +11,7 @@ if (-not $Out) { $Out = Join-Path $repo "build\package" }
 $onLinux = ($PSVersionTable.PSVersion.Major -ge 6) -and $IsLinux
 $platform = if ($onLinux) { "linux-x64" } else { "windows-x64" }
 if ($onLinux -and (& uname -m) -ne "x86_64") { Write-Host "[MealKit Manager] only x86_64 Linux is packaged"; exit 1 }
-$build = if ($onLinux) { Join-Path $repo "build/linux/bin" } else { Join-Path $repo "build\bin" }
+$build = if ($onLinux) { Join-Path $repo "build/linux/bin" } else { Join-Path $repo "build\windows\bin" }
 $exe = Join-Path $build $(if ($onLinux) { "MealKitManager" } else { "MealKitManager.exe" })
 if (-not (Test-Path $exe)) { Write-Host "[MealKit Manager] $exe not found. Build first (build.bat, or mk-build.ps1 on Linux)."; exit 1 }
 $version = (& $exe --version | Out-String).Trim() -replace '^MealKit Manager\s+', ''

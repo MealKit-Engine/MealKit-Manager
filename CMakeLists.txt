@@ -1,7 +1,7 @@
 # MealKit Manager: a hub app that gathers and opens MealKit projects, engines, and tools (SDL3 + Dear ImGui, same framework as the MkAudio tool).
 # Doesn't link the engine: connects to the engine/editor/tools only through files (mealkit.project, user folder lists, mealkit-tool.txt) and command lines.
-#   build.bat                 (Windows: vcvars64 + Ninja, build\bin\MealKitManager.exe, including tests)
-#   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build && ctest --test-dir build
+#   build.bat                 (Windows: vcvars64 + Ninja, build\windows\bin\MealKitManager.exe, including tests)
+#   cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/linux && ctest --test-dir build/linux   (build/<os>: windows, linux, macos)
 #   cmake --install build --prefix "%LOCALAPPDATA%\MealKit\manager"   (the editor launches this when opened without a project)
 cmake_minimum_required(VERSION 3.25)
 project(MealKitManager VERSION 0.2.0 LANGUAGES C CXX)
@@ -72,7 +72,7 @@ install(TARGETS MealKitManager RUNTIME DESTINATION .)
 add_custom_command(TARGET MealKitManager POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fluent-icons/FluentSystemIcons-Regular.ttf $<TARGET_FILE_DIR:MealKitManager>)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fluent-icons/FluentSystemIcons-Regular.ttf DESTINATION .)
-# Engine installer the [Engines] tab runs (beside the exe in the build too, so build\bin works the same)
+# Engine installer the [Engines] tab runs (beside the exe in the build too, so build\<os>\bin works the same)
 configure_file(scripts/install.ps1 ${CMAKE_BINARY_DIR}/bin/install.ps1 COPYONLY)
 install(FILES scripts/install.ps1 DESTINATION .)
 if(UNIX AND NOT APPLE)

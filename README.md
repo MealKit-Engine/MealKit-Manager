@@ -26,13 +26,13 @@ When the MealKit editor is started without `--project`, it starts an installed M
 Windows, Visual Studio 2022 (C++ workload), CMake 3.25+, Ninja:
 
 ```bat
-build.bat            :: build\bin\MealKitManager.exe + tests
+build.bat            :: build\windows\bin\MealKitManager.exe + tests
 build.bat install    :: also install to %LOCALAPPDATA%\MealKit\manager
 ```
 
 Linux (Ubuntu): a C++20 compiler, CMake 3.25+, Ninja and PowerShell 7 (`pwsh`); from the MealKit workspace, `.claude/scripts/mk-build.ps1 -Repo MealKit-Manager` builds into `build/linux`. It reads the release index's `linux-x64` entries (`platform` field; an entry without one is `windows-x64`). `pwsh -File scripts/package.ps1` writes `mealkit-manager-<version>-linux-x64.zip`; run from the unzipped folder, the Manager installs itself into `~/.local/share/MealKit/manager` with an application menu entry (`install.ps1 self`; update and `--uninstall` work like on Windows).
 
-Other platforms: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build && ctest --test-dir build`.
+Other platforms: `cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/linux && ctest --test-dir build/linux` (`build/<os>`: `linux`, `macos`).
 
 ## Command line
 
